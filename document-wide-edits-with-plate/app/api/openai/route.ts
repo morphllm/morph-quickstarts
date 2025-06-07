@@ -17,6 +17,26 @@ const transformationPrompts = {
   casual: "Rewrite this text in a casual, friendly, conversational tone:",
 };
 
+// Fast document builder for optimized text replacement
+class FastDocumentBuilder {
+  private parts: string[] = [];
+  
+  constructor(
+    private fullDocument: string,
+    private selectionStart: number,
+    private selectionEnd: number
+  ) {
+    this.parts.push(fullDocument.substring(0, selectionStart));
+    this.parts.push(''); // Placeholder for transformed text
+    this.parts.push(fullDocument.substring(selectionEnd));
+  }
+  
+  updateTransformedText(transformedText: string): string {
+    this.parts[1] = transformedText;
+    return this.parts.join('');
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -87,16 +107,12 @@ export async function POST(request: NextRequest) {
     const transformedSnippet = transformResponse.choices[0]?.message?.content || selectedText;
     const transformTime = Date.now() - transformStartTime;
 
-    // Step 3: Apply the edit to the full document (traditional slow approach)
+    // Step 3: Apply the edit to the full document (optimized approach)
     const applyStartTime = Date.now();
     
-    // Simulate traditional document editing overhead
-    await new Promise(resolve => setTimeout(resolve, 150 + Math.random() * 100)); // 150-250ms overhead
-    
-    // Apply the edit to the full document
-    const beforeText = fullDocument.substring(0, selectionStart);
-    const afterText = fullDocument.substring(selectionEnd);
-    const updatedDocument = beforeText + transformedSnippet + afterText;
+    // Use FastDocumentBuilder for optimized document reconstruction
+    const documentBuilder = new FastDocumentBuilder(fullDocument, selectionStart, selectionEnd);
+    const updatedDocument = documentBuilder.updateTransformedText(transformedSnippet);
     
     const applicationTime = Date.now() - applyStartTime;
     const totalTime = Date.now() - startTime;
