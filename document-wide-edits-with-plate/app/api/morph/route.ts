@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { NextRequest, NextResponse } from 'next/server';
 import { generateSharedDemoTransformation } from '../../../lib/shared-transformations';
+import { highlightEdits } from '../../../lib/highlightEdits';
 
 // Check if API keys are available
 const MORPH_API_KEY = process.env.MORPH_API_KEY;
@@ -48,17 +49,24 @@ function transformText(originalText: string, transformation: string): string {
   }
 }
 
-// Mock Morph fast document editing - this is Morph's key advantage
-async function morphFastEdit(fullDocument: string, selectedText: string, transformedText: string, selectionStart: number, selectionEnd: number): Promise<string> {
-  // Morph's key advantage: ultra-fast document reconstruction with edits
-  // In practice, this would use Morph's optimized document editing algorithms
+// Fast document builder for optimized text replacement (same as OpenAI route)
+class FastDocumentBuilder {
+  private parts: string[] = [];
   
-  // Apply the edit to the full document efficiently
-  const beforeText = fullDocument.substring(0, selectionStart)
-  const afterText = fullDocument.substring(selectionEnd)
-  const updatedDocument = beforeText + transformedText + afterText
+  constructor(
+    private fullDocument: string,
+    private selectionStart: number,
+    private selectionEnd: number
+  ) {
+    this.parts.push(fullDocument.substring(0, selectionStart));
+    this.parts.push(''); // Placeholder for transformed text
+    this.parts.push(fullDocument.substring(selectionEnd));
+  }
   
-  return updatedDocument
+  updateTransformedText(transformedText: string): string {
+    this.parts[1] = transformedText;
+    return this.parts.join('');
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -84,19 +92,19 @@ export async function POST(request: NextRequest) {
     console.log('Starting Morph transformation...')
     const startTime = Date.now()
     
-    // Step 1: Generate edit instructions using OpenAI client
+    // Step 1: Generate transformed text (identical to OpenAI route)
     const editGenStartTime = Date.now()
     
-    let editInstructions = '';
+    let transformedText = selectedText;
     if (openaiClient) {
       try {
-        // Use OpenAI to generate edit instructions
-        const editResponse = await openaiClient.chat.completions.create({
+        // Use OpenAI to directly transform the text (same as OpenAI route)
+        const transformResponse = await openaiClient.chat.completions.create({
           model: 'gpt-4o-mini',
           messages: [
             {
               role: 'system',
-              content: 'You are a text editor. Generate clear, specific instructions for how to transform the given text. Be concise but precise about what changes to make.'
+              content: 'You are a text editor. Apply the given transformation to transform the text. Return only the transformed text, nothing else.'
             },
             {
               role: 'user',
@@ -105,66 +113,111 @@ export async function POST(request: NextRequest) {
           ],
           temperature: 0.1,
         });
-        editInstructions = editResponse.choices[0]?.message?.content || `${prompt} ${selectedText}`;
+        transformedText = transformResponse.choices[0]?.message?.content?.trim() || selectedText;
       } catch (error) {
-        console.log('OpenAI API call failed, falling back to mock transformation:', error.message);
+        console.log('OpenAI transformation failed, falling back to mock:', error.message);
         // Fallback to mock transformation if API fails
-        editInstructions = `${prompt} ${selectedText}`;
+        transformedText = transformText(selectedText, transformation);
       }
     } else {
       // Fallback if no API key
-      editInstructions = `${prompt} ${selectedText}`;
+      transformedText = transformText(selectedText, transformation);
     }
     
     const editGenerationTime = Date.now() - editGenStartTime
 
-    // Step 2: Transform the selected text using mock (for demo purposes)
-    const transformedText = transformText(selectedText, transformation)
-
-    // Step 3: Apply edits using Morph's proper API format
+    // Step 2: Apply edits using Morph's proper API format or fallback
     const applyStartTime = Date.now()
+    let usedMorphAPI = false;
+    let applicationTime = 0;
     
     let updatedDocument = fullDocument;
     if (morphClient) {
       try {
+        console.log('🚀 Starting Morph API call...');
+        const morphApiCallStart = Date.now();
+        
+        // Create proper edit instructions using the format from Morph documentation
+        // Find the context around the selected text to create proper edit markers
+        const beforeContext = fullDocument.substring(Math.max(0, selectionStart - 100), selectionStart);
+        const afterContext = fullDocument.substring(selectionEnd, Math.min(fullDocument.length, selectionEnd + 100));
+        
+        // Create the update instructions in the proper format with context
+        const editInstructions = `// ... existing code ...
+${beforeContext}${transformedText}${afterContext}
+// ... existing code ...`;
+        
         // Use Morph's proper format: <code>original</code><update>edit_instructions</update>
         const morphResponse = await morphClient.chat.completions.create({
           model: 'morph-v2',
           messages: [
             {
               role: 'user',
-              content: `<code>${fullDocument}</code>\n<update>Replace "${selectedText}" with "${transformedText}"</update>`
+              content: `<code>${fullDocument}</code>\n<update>${editInstructions}</update>`
             }
-          ]
+          ],
+          timeout: 5000
         });
         
+        const morphApiCallTime = Date.now() - morphApiCallStart;
+        console.log(`✅ Morph API call successful in ${morphApiCallTime}ms`);
         updatedDocument = morphResponse.choices[0]?.message?.content || updatedDocument;
+        applicationTime = morphApiCallTime;
+        usedMorphAPI = true;
       } catch (error) {
-        console.log('Morph API call failed, falling back to manual application:', error.message);
-        // Fallback to manual document reconstruction
-        updatedDocument = await morphFastEdit(fullDocument, selectedText, transformedText, selectionStart, selectionEnd);
+        const morphApiCallTime = Date.now() - morphApiCallStart;
+        console.log(`❌ Morph API call failed in ${morphApiCallTime}ms:`, error.message);
+        
+        // Use the fallback method - FastDocumentBuilder
+        console.log('🔧 Using FastDocumentBuilder fallback...');
+        const fallbackStart = Date.now();
+        const documentBuilder = new FastDocumentBuilder(fullDocument, selectionStart, selectionEnd);
+        updatedDocument = documentBuilder.updateTransformedText(transformedText);
+        const fallbackTime = Date.now() - fallbackStart;
+        console.log(`🔧 Fallback completed in ${fallbackTime}ms`);
+        
+        applicationTime = fallbackTime;
+        usedMorphAPI = false;
       }
     } else {
-      // Fallback if no Morph API key
-      updatedDocument = await morphFastEdit(fullDocument, selectedText, transformedText, selectionStart, selectionEnd);
+      console.log('⚠️ No Morph API key, using FastDocumentBuilder fallback...');
+      const fallbackStart = Date.now();
+      const documentBuilder = new FastDocumentBuilder(fullDocument, selectionStart, selectionEnd);
+      updatedDocument = documentBuilder.updateTransformedText(transformedText);
+      const fallbackTime = Date.now() - fallbackStart;
+      console.log(`⚠️ Fallback completed in ${fallbackTime}ms`);
+      applicationTime = fallbackTime;
+      usedMorphAPI = false;
     }
     
-    const applicationTime = Date.now() - applyStartTime
+    // Create highlighted version of the document
+    const highlightedDocument = highlightEdits(
+      updatedDocument, 
+      fullDocument, 
+      selectionStart, 
+      selectionEnd, 
+      transformedText
+    );
+    
+    // Total server-side processing time
     const totalTime = Date.now() - startTime
 
-    console.log(`Morph transformation completed in ${totalTime}ms (Edit gen: ${editGenerationTime}ms, Morph apply: ${applicationTime}ms)`)
+    console.log(`Morph transformation completed in ${totalTime}ms (Edit gen: ${editGenerationTime}ms, Morph apply: ${applicationTime}ms) [API: ${usedMorphAPI ? 'SUCCESS' : 'FAILED/MISSING'}]`)
 
     return NextResponse.json({
       updatedDocument,
       originalDocument: fullDocument,
       selectedText,
       transformedText,
-      editInstructions,
+      editInstructions: prompt,
+      highlightedDocument,
       timing: {
         editGenerationTime,
         applicationTime,
-        totalTime,
-      }
+        totalTime, // This will be replaced by the client-side total time
+      },
+      usedMorphAPI,
+      morphApiStatus: usedMorphAPI ? 'API_SUCCESS' : (morphClient ? 'API_FAILED' : 'NO_API_KEY'),
     })
 
   } catch (error) {

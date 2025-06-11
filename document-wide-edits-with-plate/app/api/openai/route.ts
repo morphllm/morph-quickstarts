@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { NextRequest, NextResponse } from 'next/server';
 import { generateSharedDemoTransformation } from '../../../lib/shared-transformations';
+import { highlightEdits } from '../../../lib/highlightEdits';
 
 // Check if API key is available
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -66,69 +67,70 @@ export async function POST(request: NextRequest) {
 
     console.log('Starting OpenAI transformation...');
     const startTime = Date.now();
+    
+    // Step 1: Generate transformed text
     const editGenStartTime = Date.now();
 
-    // Step 1: Generate edit instructions
-    const editResponse = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a text editor. Generate clear, specific instructions for how to transform the given text. Be concise but precise about what changes to make.'
-        },
-        {
-          role: 'user',
-          content: `${prompt}\n\nOriginal text: "${selectedText}"`
-        }
-      ],
-      temperature: 0.1,
-    });
+    let transformedSnippet = selectedText;
+    if (openai) {
+      try {
+        const transformResponse = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a text editor. Apply the given transformation to transform the text. Return only the transformed text, nothing else.'
+            },
+            {
+              role: 'user',
+              content: `${prompt}\n\nOriginal text: "${selectedText}"`
+            }
+          ],
+          temperature: 0.1,
+        });
+        transformedSnippet = transformResponse.choices[0]?.message?.content?.trim() || selectedText;
+      } catch (error) {
+        console.log('OpenAI transformation failed, using original text:', error.message);
+        transformedSnippet = selectedText;
+      }
+    }
 
-    const editInstructions = editResponse.choices[0]?.message?.content || '';
     const editGenerationTime = Date.now() - editGenStartTime;
 
-    // Step 2: Apply the edit instructions to get the transformed snippet
-    const transformStartTime = Date.now();
-    const transformResponse = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a text editor. Apply the given edit instructions to transform the text. Return only the transformed text, nothing else.'
-        },
-        {
-          role: 'user',
-          content: `Original text: "${selectedText}"\n\nEdit instructions: ${editInstructions}\n\nTransformed text:`
-        }
-      ],
-      temperature: 0.1,
-    });
-
-    const transformedSnippet = transformResponse.choices[0]?.message?.content || selectedText;
-    const transformTime = Date.now() - transformStartTime;
-
-    // Step 3: Apply the edit to the full document (optimized approach)
+    // Step 2: Apply the edit to the full document (optimized approach)
     const applyStartTime = Date.now();
     
     // Use FastDocumentBuilder for optimized document reconstruction
     const documentBuilder = new FastDocumentBuilder(fullDocument, selectionStart, selectionEnd);
     const updatedDocument = documentBuilder.updateTransformedText(transformedSnippet);
     
+    // Create highlighted version of the document
+    const highlightedDocument = highlightEdits(
+      updatedDocument, 
+      fullDocument, 
+      selectionStart, 
+      selectionEnd, 
+      transformedSnippet
+    );
+    
     const applicationTime = Date.now() - applyStartTime;
+    
+    // Total server-side processing time
     const totalTime = Date.now() - startTime;
 
-    console.log(`OpenAI transformation completed in ${totalTime}ms (Edit gen: ${editGenerationTime}ms, Transform: ${transformTime}ms, Apply: ${applicationTime}ms)`);
+    console.log(`OpenAI transformation completed in ${totalTime}ms (Edit gen: ${editGenerationTime}ms, Apply: ${applicationTime}ms)`);
 
     return NextResponse.json({
       updatedDocument,
       originalDocument: fullDocument,
       selectedText,
       transformedText: transformedSnippet,
-      editInstructions,
+      editInstructions: prompt,
+      highlightedDocument,
       timing: {
         editGenerationTime,
-        applicationTime: transformTime + applicationTime, // Combined transform + apply time
-        totalTime,
+        applicationTime,
+        totalTime, // This will be replaced by the client-side total time
       }
     });
   } catch (error) {

@@ -64,8 +64,8 @@ export default function SelectableText({ content, onTransform }: SelectableTextP
         // Get the position of the selection for popover
         const rect = range.getBoundingClientRect()
         setPopoverPosition({
-          x: rect.left + rect.width / 2,
-          y: rect.bottom + window.scrollY + 10
+          x: rect.right + 10, // Position to the right of selection with 10px margin
+          y: rect.top + window.scrollY // Align with the top of selection
         })
         
         setPopoverOpen(true)
@@ -109,9 +109,8 @@ export default function SelectableText({ content, onTransform }: SelectableTextP
         <div
           className="fixed z-50"
           style={{
-            left: popoverPosition.x,
+            left: Math.min(popoverPosition.x, window.innerWidth - 320 - 20), // Ensure popover stays on screen
             top: popoverPosition.y,
-            transform: 'translateX(-50%)'
           }}
         >
           <Card className="w-80 p-2 shadow-lg border bg-white">

@@ -3,8 +3,23 @@
 import React, { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { getWordCount, getCharacterCount, getReadingTime, cn } from '../../lib/utils';
+import { cn } from '../lib/utils';
 import { Badge } from '@/components/ui/badge';
+
+// Utility functions for document stats
+const getWordCount = (text: string): number => {
+  return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+};
+
+const getCharacterCount = (text: string): number => {
+  return text.length;
+};
+
+const getReadingTime = (text: string): number => {
+  const wordsPerMinute = 200;
+  const wordCount = getWordCount(text);
+  return Math.ceil(wordCount / wordsPerMinute);
+};
 import dynamic from 'next/dynamic';
 
 // Dynamically import the diff viewer to avoid SSR issues
@@ -108,7 +123,6 @@ export function DocumentViewer({
               newValue={content}
               splitView={false}
               hideLineNumbers={true}
-              showDiffStats={false}
               styles={{
                 variables: {
                   dark: {
