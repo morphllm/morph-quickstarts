@@ -217,7 +217,7 @@ export default function NotionSidebar({ selectedText, editHistory, document, cha
             <form onSubmit={handleSubmit} className="p-4 border-t border-gray-200 bg-white">
               {chatDraftText && (
                 <div className="mb-2 text-xs text-gray-500 truncate">
-                  Inserted: "{chatDraftText.length > 120 ? chatDraftText.substring(0, 120) + '...' : chatDraftText}"
+                  Inserted: &quot;{chatDraftText.length > 120 ? chatDraftText.substring(0, 120) + '...' : chatDraftText}&quot;
                 </div>
               )}
               <div className="flex gap-2">
