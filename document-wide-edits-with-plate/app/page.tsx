@@ -1,8 +1,8 @@
 "use client"
 
 import React, { useEffect, useRef, useState } from 'react'
-import { DocumentViewer } from '@/components/DocumentViewer'
-import NotionSidebar from '@/components/NotionSidebar'
+import { DocumentViewer } from '@/components/DocViewer'
+import NotionSidebar from '@/components/Sidebar'
 
 interface HistoryItem {
   id: string
@@ -60,10 +60,17 @@ function limitHistory(history: HistoryItem[]): HistoryItem[] {
 }
 
 export default function Home() {
-  const [docContent, setDocContent] = useState(() => {
-    if (typeof window === 'undefined') return sampleDocument
-    return localStorage.getItem('docContent') || sampleDocument
-  })
+  // Start with the baked-in sample document during SSR to avoid
+  // mismatching markup, then replace with the persisted version
+  // on the client after hydration.
+  const [docContent, setDocContent] = useState(sampleDocument)
+
+  // Load stored content on first client render
+  useEffect(() => {
+    const stored = localStorage.getItem('docContent')
+    if (stored) setDocContent(stored)
+  }, [])
+
   const [chatDraftText, setChatDraftText] = useState('')
   const [selectionRange, setSelectionRange] = useState<{ start: number; end: number } | null>(null)
   const [history, setHistory] = useState<HistoryItem[]>(() => {

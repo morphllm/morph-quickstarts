@@ -124,19 +124,8 @@ export default function NotionSidebar({ selectedText, editHistory, document, cha
 
   return (
     <div className="w-80 bg-gray-50 border-l border-gray-200 flex flex-col h-screen fixed right-0 top-0">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-200 bg-white">
-        <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-          <MessageSquare className="w-5 h-5" />
-          AI Assistant
-        </h2>
-        {/* theme toggle removed */}
-        {selectedText && (
-          <p className="text-sm text-gray-500 mt-1 truncate">
-            Selected: "{selectedText.substring(0, 30)}..."
-          </p>
-        )}
-      </div>
+      {/* Header placeholder to match Document header height */}
+      <div className="px-6 py-3 border-b border-gray-200 bg-white" />
 
       {/* Tabs */}
       <div className="flex border-b border-gray-200 bg-white">
@@ -235,7 +224,7 @@ export default function NotionSidebar({ selectedText, editHistory, document, cha
                 <textarea
                   value={input}
                   onChange={handleInputChange}
-                  placeholder={selectedText ? "Ask something or give an edit instruction... (Enter to send, Shift+Enter for new line)" : "Ask a question about the document... (Enter to send, Shift+Enter for new line)"}
+                  placeholder={selectedText ? "Ask something or give an edit instruction" : "Enter to send, Shift+Enter for new line"}
                   disabled={isLoading}
                   rows={2}
                   onKeyDown={(e) => {

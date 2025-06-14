@@ -1,6 +1,21 @@
 import { NextRequest } from 'next/server'
 import OpenAI from 'openai'
 
+// Plate markdown helpers
+// import { markdownSerializer, markdownDeserializer } from '@platejs/markdown'
+// import { createPlateEditor } from 'platejs'
+// import {
+//   ParagraphPlugin,
+//   HeadingPlugin,
+//   BlockquotePlugin,
+//   BoldPlugin,
+//   ItalicPlugin,
+//   UnderlinePlugin,
+//   StrikethroughPlugin,
+//   CodePlugin,
+//   LinkPlugin,
+// } from '@platejs/basic-nodes'
+
 // Ensure the API key is present; the @ai-sdk/openai client reads it from env by default (OPENAI_API_KEY)
 
 // Morph Apply client
@@ -11,6 +26,32 @@ const morph = new OpenAI({
 
 // Direct OpenAI client (default baseURL) for function-calling requests
 const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+
+//   ─── Helper: build a headless editor once per module ────────────────────
+// const mdEditor = createPlateEditor({
+//   plugins: [
+//     ParagraphPlugin,
+//     HeadingPlugin,
+//     BlockquotePlugin,
+//     BoldPlugin,
+//     ItalicPlugin,
+//     UnderlinePlugin,
+//     StrikethroughPlugin,
+//     CodePlugin,
+//     LinkPlugin,
+//   ],
+//   value: [],
+// })
+
+// function slateToMarkdown(value: any): string {
+//   if (!Array.isArray(value)) return String(value || '')
+//   mdEditor.children = value
+//   return markdownSerializer(mdEditor)
+// }
+
+// function markdownToSlate(md: string) {
+//   return markdownDeserializer(md, { plugins: mdEditor.plugins })
+// }
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
@@ -63,7 +104,8 @@ If you plan on deleting a section, you must provide surrounding context to indic
 DO NOT omit spans of pre-existing content without using the // ... existing code ... comment to indicate its absence.`
       
     if (context?.fullDocument) {
-      system += `\n\nCurrent document:\n\n${context.fullDocument}`;
+      const docJson = JSON.stringify(context.fullDocument, null, 2)
+      system += `\n\nCurrent document (Slate JSON):\n\n${docJson}`
     }
 
     // Step 1: Ask OpenAI to generate edit instructions
@@ -169,7 +211,13 @@ DO NOT omit spans of pre-existing content without using the // ... existing code
         }
       })
 
-      return new Response(stream, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
+      /*
+         We return a JSON object so the client can swap the editor value directly.
+         The plain markdown is still streamed for legacy clients.
+      */
+      return new Response(stream, {
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      })
     } catch (error) {
       console.error('[Morph] API error:', error)
       console.error('[Morph] Request details:', {
@@ -179,10 +227,13 @@ DO NOT omit spans of pre-existing content without using the // ... existing code
         hasApiKey: !!process.env.MORPH_API_KEY,
         requestFormat: 'XML-tag'
       })
-      return new Response(JSON.stringify({ 
-        error: 'Failed to apply changes via Morph',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      }), { status: 500 })
+      return new Response(
+        JSON.stringify({
+          error: 'Failed to apply changes via Morph',
+          details: error instanceof Error ? error.message : 'Unknown error',
+        }),
+        { status: 500 }
+      )
     }
   }
 

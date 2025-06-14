@@ -1,16 +1,24 @@
 'use client';
 
-import React, { useMemo, useRef } from 'react';
-import dynamic from 'next/dynamic';
-import remarkGfm from 'remark-gfm';
+import React, { useMemo } from 'react';
 import { cn } from '../lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { createInlineDiff } from '../lib/createInlineDiff';
-import rehypeRaw from 'rehype-raw';
 import { Loader2 } from 'lucide-react';
+// @ts-ignore – Plate v42+ exposes the React bindings under this path
+import { Plate, PlateContent, usePlateEditor } from 'platejs/react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 
-// Dynamically import ReactMarkdown on client only to keep bundle lighter
-const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false });
+import {
+  HeadingPlugin,
+  BlockquotePlugin,
+  BoldPlugin,
+  ItalicPlugin,
+  UnderlinePlugin,
+  StrikethroughPlugin,
+  CodePlugin,
+} from '@platejs/basic-nodes/react';
 
 // Utility functions for document stats
 const getWordCount = (text: string): number => {
@@ -27,6 +35,61 @@ const getReadingTime = (text: string): number => {
   return Math.ceil(wordCount / wordsPerMinute);
 };
 
+// Simple markdown to Plate value converter
+const parseMarkdownToPlate = (markdown: string) => {
+  if (!markdown || markdown.trim() === '') {
+    return [{ type: 'p', children: [{ text: '' }] }];
+  }
+
+  const lines = markdown.split('\n');
+  const nodes: any[] = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    if (line.startsWith('# ')) {
+      nodes.push({
+        type: 'h1',
+        children: [{ text: line.slice(2) }]
+      });
+    } else if (line.startsWith('## ')) {
+      nodes.push({
+        type: 'h2',
+        children: [{ text: line.slice(3) }]
+      });
+    } else if (line.startsWith('### ')) {
+      nodes.push({
+        type: 'h3',
+        children: [{ text: line.slice(4) }]
+      });
+    } else if (line.startsWith('> ')) {
+      nodes.push({
+        type: 'blockquote',
+        children: [{ text: line.slice(2) }]
+      });
+    } else if (line.trim() === '') {
+      // Skip empty lines
+      continue;
+    } else {
+      // Parse inline formatting for regular text
+      const children = parseInlineText(line);
+      nodes.push({
+        type: 'p',
+        children
+      });
+    }
+  }
+  
+  return nodes.length > 0 ? nodes : [{ type: 'p', children: [{ text: '' }] }];
+};
+
+// Parse inline text formatting
+const parseInlineText = (text: string) => {
+  // For now, we'll keep it simple and just return plain text
+  // In a full implementation, you'd parse **bold**, *italic*, etc.
+  return [{ text }];
+};
+
 export interface TimingInfo {
   editGenerationTime?: number;
   applicationTime?: number;
@@ -40,11 +103,7 @@ interface DocumentViewerProps {
   timing?: TimingInfo;
   isTransforming: boolean;
   className?: string;
-  showDiff?: boolean;
-  originalContent?: string;
-  onApply?: () => void;
-  onCancel?: () => void;
-  highlightRange?: {start:number; end:number};
+  editable?: boolean;
 }
 
 export function DocumentViewer({ 
@@ -54,16 +113,29 @@ export function DocumentViewer({
   timing,
   isTransforming, 
   className,
-  showDiff = false,
-  originalContent,
-  onApply,
-  onCancel,
-  highlightRange
+  editable = false
 }: DocumentViewerProps) {
-  const [hydrated, setHydrated] = React.useState(false)
+  const [hydrated, setHydrated] = React.useState(false);
+  
   React.useEffect(() => {
-    setHydrated(true)
-  }, [])
+    setHydrated(true);
+  }, []);
+
+  const initialValue = useMemo(() => parseMarkdownToPlate(content), [content]);
+
+  const editor = usePlateEditor({
+    plugins: [
+      HeadingPlugin,
+      BlockquotePlugin,
+      BoldPlugin,
+      ItalicPlugin,
+      UnderlinePlugin,
+      StrikethroughPlugin,
+      CodePlugin,
+    ],
+    value: initialValue,
+  });
+
   const stats = {
     words: content ? getWordCount(content) : 0,
     characters: content ? getCharacterCount(content) : 0,
@@ -102,10 +174,6 @@ export function DocumentViewer({
     return null;
   };
 
-  const showDiffView = useMemo(() => {
-    return showDiff && originalContent && content !== originalContent && content.trim() !== '';
-  }, [showDiff, originalContent, content]);
-
   const renderContent = () => {
     // Show placeholder for empty content
     if (!content || content.trim() === '') {
@@ -120,58 +188,19 @@ export function DocumentViewer({
       );
     }
 
-    if (showDiffView) {
-      let inline: string
-      if (highlightRange) {
-        const { start, end } = highlightRange
-        const before = originalContent?.substring(0, start) || ''
-        const after = originalContent?.substring(end) || ''
-        const removed = originalContent?.substring(start, end) || ''
-        const added = content.substring(start, start + (content.length - (originalContent?.length || 0)) + (end - start))
-        inline = before + `\n~~${removed}~~\n` + added + after
-      } else {
-        inline = createInlineDiff(originalContent || '', content)
-      }
+    // Default view: editable -> Plate, read-only -> markdown preview
+    if (editable) {
       return (
-        <div className="relative group">
-          {onApply && onCancel && (
-            <div className="absolute -top-10 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 bg-background border border-border rounded-md shadow-lg px-2 py-1">
-              <button
-                onClick={onApply}
-                className="px-2 py-0.5 text-xs font-medium text-green-600 hover:bg-green-50 rounded focus:outline-none"
-              >
-                ✓ Accept
-              </button>
-              <div className="w-px h-4 bg-border" />
-              <button
-                onClick={onCancel}
-                className="px-2 py-0.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded focus:outline-none"
-              >
-                ✕ Discard
-              </button>
-            </div>
-          )}
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeRaw]}
-            components={{
-              del: (props: any) => (
-                <del className="text-red-600 bg-transparent" {...props} />
-              ),
-              ins: (props: any) => (
-                <span className="text-green-700" {...props} />
-              )
-            }}
-          >
-            {inline}
-          </ReactMarkdown>
+        <div className={cn('prose prose-lg max-w-none px-6', 'text-foreground')}>
+          <Plate editor={editor} onChange={({value})=>{/* */}}>
+            <PlateContent readOnly={!editable} />
+          </Plate>
         </div>
-      )
+      );
     }
 
     return (
       <div className={cn('prose prose-lg max-w-none px-6', 'text-foreground')}>
-        {/* @ts-ignore */}
         <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
           {content}
         </ReactMarkdown>
@@ -209,22 +238,23 @@ export function DocumentViewer({
           </div>
         </div>
 
-        {/* Second Row - Timing Information */}
-        {!isTransforming && (timing || time !== null) && (
-          <div className="flex items-center justify-between bg-muted/50 -mx-6 px-6 py-2 border-t border-border/50">
-            <div className="text-xs font-medium text-muted-foreground">
-              ⚡ Performance Metrics:
-            </div>
-            <div className="flex items-center space-x-2">
-              {renderTimingInfo()}
-            </div>
+        {/* Second Row - Timing Information - Always present but conditionally visible */}
+        <div className={cn(
+          "flex items-center justify-between bg-muted/50 -mx-6 px-6 py-2 border-t border-border/50",
+          (!isTransforming && !(timing || time !== null)) && "invisible"
+        )}>
+          <div className="text-xs font-medium text-muted-foreground">
+            ⚡ Performance Metrics:
           </div>
-        )}
+          <div className="flex items-center space-x-2">
+            {renderTimingInfo()}
+          </div>
+        </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-auto bg-muted/30">
-        <div className="max-w-full mx-auto px-6 py-6 h-full">
+        <div className="max-w-[840px] w-full mx-auto px-6 py-6 h-full">
           <div className="bg-background rounded-lg p-6 shadow-sm border border-border h-full">
             {renderContent()}
           </div>
