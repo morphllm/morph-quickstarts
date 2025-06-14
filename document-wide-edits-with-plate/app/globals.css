@@ -162,11 +162,44 @@
 
 /* Custom selection styles */
 ::selection {
-  @apply bg-primary/20;
+  @apply bg-blue-200/50 text-gray-900;
 }
 
 ::-moz-selection {
-  @apply bg-primary/20;
+  @apply bg-blue-200/50 text-gray-900;
+}
+
+/* Ensure proper text selection behavior */
+.select-text {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+  user-select: text;
+}
+
+/* Prevent selection issues with nested elements */
+.prose * {
+  -webkit-user-select: inherit;
+  -moz-user-select: inherit;
+  -ms-user-select: inherit;
+  user-select: inherit;
+}
+
+/* Fix selection behavior in Safari */
+.prose {
+  -webkit-touch-callout: default;
+}
+
+/* Ensure popover doesn't interfere with selection */
+.selection-popover {
+  pointer-events: auto;
+}
+
+.selection-popover * {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
 }
 
 /* Keyframes */
@@ -197,4 +230,17 @@
 
 .slate-editor [data-slate-placeholder] {
   @apply text-notion-gray-400 pointer-events-none select-none;
+}
+
+/* Diff viewer inline styles */
+.diff-removed, .diff-removed span {
+  text-decoration: line-through !important;
+}
+
+.diff-removed {
+  background: transparent !important; /* remove red bg to mimic Notion */
+}
+
+.diff-added {
+  background: transparent !important;
 } 

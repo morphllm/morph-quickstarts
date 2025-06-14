@@ -1,47 +1,54 @@
-export const DOCUMENT_TRANSFORMS = [
-  {
+export const DOCUMENT_TRANSFORMS = {
+  restructure: {
     key: 'restructure',
     title: 'Restructure',
+    name: 'Restructure',
     prompt: 'restructure this document with clear headings, logical flow, and proper section hierarchy',
     icon: '🔄',
   },
-  {
+  summarize: {
     key: 'summarize',
     title: 'Executive Summary',
+    name: 'Executive Summary',
     prompt: 'create an executive summary at the top, then restructure the content with key insights highlighted',
     icon: '📋',
   },
-  {
+  expand: {
     key: 'expand',
     title: 'Expand Details',
+    name: 'Expand Details',
     prompt: 'expand details with more detailed explanations, examples, and supporting information',
     icon: '🔍',
   },
-  {
+  simplify: {
     key: 'simplify',
     title: 'Simplify',
+    name: 'Simplify',
     prompt: 'simplify the entire document using simpler language while maintaining all key information',
     icon: '✨',
   },
-  {
+  academic: {
     key: 'academic',
     title: 'Academic Style',
+    name: 'Academic Style',
     prompt: 'transform into academic writing style with proper citations, formal tone, and structured arguments',
     icon: '🎓',
   },
-  {
+  business: {
     key: 'business',
     title: 'Business Proposal',
+    name: 'Business Proposal',
     prompt: 'convert into a business proposal format with executive summary, problem statement, solution, and next steps',
     icon: '💼',
   },
-  {
+  tutorial: {
     key: 'tutorial',
     title: 'Tutorial',
+    name: 'Tutorial',
     prompt: 'restructure as a tutorial with clear instructions, prerequisites, and examples',
     icon: '📚',
   },
-];
+} as const;
 
 export const DEMO_CONTENT = `# The Way of Code: Mastering the Art of Software Engineering
 

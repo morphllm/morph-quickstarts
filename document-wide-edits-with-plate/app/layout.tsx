@@ -13,7 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="font-notion antialiased bg-white text-notion-gray-900">
+      <body className="antialiased bg-white">
         {children}
       </body>
     </html>

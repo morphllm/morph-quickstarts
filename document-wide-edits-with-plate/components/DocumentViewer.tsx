@@ -1,10 +1,16 @@
 'use client';
 
-import React, { useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
+import React, { useMemo, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import remarkGfm from 'remark-gfm';
 import { cn } from '../lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { createInlineDiff } from '../lib/createInlineDiff';
+import rehypeRaw from 'rehype-raw';
+import { Loader2 } from 'lucide-react';
+
+// Dynamically import ReactMarkdown on client only to keep bundle lighter
+const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false });
 
 // Utility functions for document stats
 const getWordCount = (text: string): number => {
@@ -20,13 +26,6 @@ const getReadingTime = (text: string): number => {
   const wordCount = getWordCount(text);
   return Math.ceil(wordCount / wordsPerMinute);
 };
-import dynamic from 'next/dynamic';
-
-// Dynamically import the diff viewer to avoid SSR issues
-const ReactDiffViewer = dynamic(() => import('react-diff-viewer-continued'), {
-  ssr: false,
-  loading: () => <div>Loading diff...</div>
-});
 
 export interface TimingInfo {
   editGenerationTime?: number;
@@ -43,6 +42,9 @@ interface DocumentViewerProps {
   className?: string;
   showDiff?: boolean;
   originalContent?: string;
+  onApply?: () => void;
+  onCancel?: () => void;
+  highlightRange?: {start:number; end:number};
 }
 
 export function DocumentViewer({ 
@@ -53,8 +55,15 @@ export function DocumentViewer({
   isTransforming, 
   className,
   showDiff = false,
-  originalContent 
+  originalContent,
+  onApply,
+  onCancel,
+  highlightRange
 }: DocumentViewerProps) {
+  const [hydrated, setHydrated] = React.useState(false)
+  React.useEffect(() => {
+    setHydrated(true)
+  }, [])
   const stats = {
     words: content ? getWordCount(content) : 0,
     characters: content ? getCharacterCount(content) : 0,
@@ -112,130 +121,59 @@ export function DocumentViewer({
     }
 
     if (showDiffView) {
+      let inline: string
+      if (highlightRange) {
+        const { start, end } = highlightRange
+        const before = originalContent?.substring(0, start) || ''
+        const after = originalContent?.substring(end) || ''
+        const removed = originalContent?.substring(start, end) || ''
+        const added = content.substring(start, start + (content.length - (originalContent?.length || 0)) + (end - start))
+        inline = before + `\n~~${removed}~~\n` + added + after
+      } else {
+        inline = createInlineDiff(originalContent || '', content)
+      }
       return (
-        <div className="space-y-4">
-          <div className="text-sm font-medium text-muted-foreground mb-2">
-            Changes from original document:
-          </div>
-          <div className="border border-border rounded-lg overflow-hidden">
-            <ReactDiffViewer
-              oldValue={originalContent || ''}
-              newValue={content}
-              splitView={false}
-              hideLineNumbers={true}
-              styles={{
-                variables: {
-                  dark: {
-                    diffViewerBackground: 'hsl(var(--background))',
-                    diffViewerColor: 'hsl(var(--foreground))',
-                    addedBackground: 'rgba(34, 197, 94, 0.1)',
-                    addedColor: 'hsl(var(--foreground))',
-                    removedBackground: 'rgba(239, 68, 68, 0.1)',
-                    removedColor: 'hsl(var(--foreground))',
-                    wordAddedBackground: 'rgba(34, 197, 94, 0.2)',
-                    wordRemovedBackground: 'rgba(239, 68, 68, 0.2)',
-                    addedGutterBackground: 'rgba(34, 197, 94, 0.1)',
-                    removedGutterBackground: 'rgba(239, 68, 68, 0.1)',
-                    gutterBackground: 'hsl(var(--muted))',
-                    gutterBackgroundDark: 'hsl(var(--muted))',
-                    highlightBackground: 'hsl(var(--muted))',
-                    highlightGutterBackground: 'hsl(var(--muted))',
-                    codeFoldGutterBackground: 'hsl(var(--muted))',
-                    codeFoldBackground: 'hsl(var(--muted))',
-                  },
-                  light: {
-                    diffViewerBackground: 'hsl(var(--background))',
-                    diffViewerColor: 'hsl(var(--foreground))',
-                    addedBackground: 'rgba(34, 197, 94, 0.1)',
-                    addedColor: 'hsl(var(--foreground))',
-                    removedBackground: 'rgba(239, 68, 68, 0.1)',
-                    removedColor: 'hsl(var(--foreground))',
-                    wordAddedBackground: 'rgba(34, 197, 94, 0.2)',
-                    wordRemovedBackground: 'rgba(239, 68, 68, 0.2)',
-                    addedGutterBackground: 'rgba(34, 197, 94, 0.1)',
-                    removedGutterBackground: 'rgba(239, 68, 68, 0.1)',
-                    gutterBackground: 'hsl(var(--muted))',
-                    gutterBackgroundDark: 'hsl(var(--muted))',
-                    highlightBackground: 'hsl(var(--muted))',
-                    highlightGutterBackground: 'hsl(var(--muted))',
-                    codeFoldGutterBackground: 'hsl(var(--muted))',
-                    codeFoldBackground: 'hsl(var(--muted))',
-                  }
-                }
-              }}
-            />
-          </div>
+        <div className="relative group">
+          {onApply && onCancel && (
+            <div className="absolute -top-10 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 bg-background border border-border rounded-md shadow-lg px-2 py-1">
+              <button
+                onClick={onApply}
+                className="px-2 py-0.5 text-xs font-medium text-green-600 hover:bg-green-50 rounded focus:outline-none"
+              >
+                ✓ Accept
+              </button>
+              <div className="w-px h-4 bg-border" />
+              <button
+                onClick={onCancel}
+                className="px-2 py-0.5 text-xs font-medium text-red-600 hover:bg-red-50 rounded focus:outline-none"
+              >
+                ✕ Discard
+              </button>
+            </div>
+          )}
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeRaw]}
+            components={{
+              del: (props: any) => (
+                <del className="text-red-600 bg-transparent" {...props} />
+              ),
+              ins: (props: any) => (
+                <span className="text-green-700" {...props} />
+              )
+            }}
+          >
+            {inline}
+          </ReactMarkdown>
         </div>
-      );
+      )
     }
 
     return (
-      <div className={cn(
-        'w-full min-h-[600px]',
-        'prose prose-lg prose-zinc max-w-none dark:prose-invert',
-        'text-foreground'
-      )}>
-        <ReactMarkdown 
-          remarkPlugins={[remarkGfm]}
-          components={{
-            h1: ({children}) => (
-              <h1 className="text-3xl font-bold text-foreground mb-4 mt-8 leading-tight">
-                {children}
-              </h1>
-            ),
-            h2: ({children}) => (
-              <h2 className="text-2xl font-semibold text-foreground mb-3 mt-6 leading-tight">
-                {children}
-              </h2>
-            ),
-            h3: ({children}) => (
-              <h3 className="text-xl font-medium text-foreground mb-2 mt-4 leading-tight">
-                {children}
-              </h3>
-            ),
-            p: ({children}) => (
-              <p className="text-base text-foreground leading-relaxed mb-3">
-                {children}
-              </p>
-            ),
-            ul: ({children}) => (
-              <ul className="mb-4 pl-6 list-disc">
-                {children}
-              </ul>
-            ),
-            ol: ({children}) => (
-              <ol className="mb-4 pl-6 list-decimal">
-                {children}
-              </ol>
-            ),
-            li: ({children}) => (
-              <li className="text-base text-foreground leading-relaxed mb-1">
-                {children}
-              </li>
-            ),
-            blockquote: ({children}) => (
-              <blockquote className="border-l-4 border-border pl-4 italic text-muted-foreground my-4">
-                {children}
-              </blockquote>
-            ),
-            strong: ({children}) => (
-              <strong className="font-semibold text-foreground">
-                {children}
-              </strong>
-            ),
-            em: ({children}) => (
-              <em className="italic">
-                {children}
-              </em>
-            ),
-            code: ({children}) => (
-              <code className="bg-muted text-foreground px-1.5 py-0.5 rounded text-sm font-mono">
-                {children}
-              </code>
-            ),
-          }}
-        >
-          {content || "No content available"}
+      <div className={cn('prose prose-lg max-w-none px-6', 'text-foreground')}>
+        {/* @ts-ignore */}
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+          {content}
         </ReactMarkdown>
       </div>
     );
@@ -251,20 +189,21 @@ export function DocumentViewer({
             <h1 className="text-sm font-medium text-foreground">
               {title}
             </h1>
-            <div className="flex items-center space-x-2 text-xs text-muted-foreground">
-              <span>{stats.words} words</span>
-              <span>•</span>
-              <span>{stats.characters} chars</span>
-              <span>•</span>
-              <span>{stats.readingTime} min</span>
-            </div>
+            {hydrated && (
+              <div className="flex items-center space-x-2 text-xs text-muted-foreground" suppressHydrationWarning>
+                <span>{stats.words} words</span>
+                <span>•</span>
+                <span>{stats.characters} chars</span>
+                <span>•</span>
+                <span>{stats.readingTime} min</span>
+              </div>
+            )}
           </div>
           
           <div className="flex items-center space-x-2">
             {isTransforming && (
               <div className="flex items-center space-x-2 text-sm text-primary">
-                <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                <span>Transforming...</span>
+                <Loader2 className="w-4 h-4 animate-spin" />
               </div>
             )}
           </div>
