@@ -9,7 +9,9 @@ import {
   Send,
   User,
   Bot,
-  Loader2
+  Loader2,
+  Edit,
+  History
 } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 
@@ -29,6 +31,12 @@ interface NotionSidebarProps {
   chatDraftText?: string
   selectionRange?: {start:number; end:number} | null
   onStreamUpdate?: (draft:string, done:boolean)=>void
+}
+
+// Helper function to extract planned changes from backticks
+const extractPlannedChanges = (content: string): string | null => {
+  const backtickMatch = content.match(/```\n([\s\S]*?)\n```/)
+  return backtickMatch ? backtickMatch[1].trim() : null
 }
 
 export default function NotionSidebar({ selectedText, editHistory, document, chatDraftText = '', selectionRange, onStreamUpdate }: NotionSidebarProps) {
@@ -188,10 +196,48 @@ export default function NotionSidebar({ selectedText, editHistory, document, cha
                             : 'bg-blue-500 text-white'
                         }`}>
                           {(() => {
-                            if (message.role === 'assistant' && message.content.includes('<updated_document>')) {
-                              // streaming or done
-                              const done = message.content.includes('</updated_document>')
-                              return done ? '✅ Draft ready. Review in document pane.' : '⏳ Updating document…'
+                            if (message.role === 'assistant') {
+                              // Check for planned changes with code_edit preview
+                              const plannedChanges = extractPlannedChanges(message.content)
+                              const hasDocumentStream = message.content.includes('<updated_document>')
+                              
+                              if (plannedChanges) {
+                                const planningContent = (
+                                  <div>
+                                    <div className="mb-3">{message.content.split('```')[0].trim()}</div>
+                                    <div className="bg-gray-800 text-gray-100 p-3 rounded text-xs font-mono overflow-x-auto">
+                                      <div className="text-gray-400 mb-2 flex items-center gap-1">
+                                        <Edit className="w-3 h-3" />
+                                        Planned changes:
+                                      </div>
+                                      <pre className="whitespace-pre-wrap text-green-300">{plannedChanges}</pre>
+                                    </div>
+                                  </div>
+                                )
+                                
+                                // If this message also has document streaming, show both
+                                if (hasDocumentStream) {
+                                  const done = message.content.includes('</updated_document>')
+                                  return (
+                                    <div>
+                                      {planningContent}
+                                      <div className="mt-3 pt-3 border-t border-gray-200">
+                                        <div className="text-sm text-gray-600">
+                                          {done ? '✅ Changes applied successfully' : '⏳ Applying changes...'}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
+                                }
+                                
+                                return planningContent
+                              }
+
+                              // Handle document streaming only (no planning content)
+                              if (hasDocumentStream) {
+                                const done = message.content.includes('</updated_document>')
+                                return done ? '✅ Draft ready. Review in document pane.' : '⏳ Updating document…'
+                              }
                             }
                             return message.content
                           })()}
