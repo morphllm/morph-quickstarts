@@ -2,68 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 10% 3.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
+@layer components {
+  .list-circle {
+    list-style-type: circle;
   }
-  
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-  }
+}
 
+/* Font Variables */
+:root {
+  --font-inter: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-figtree: Figtree, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+@layer base {
   * {
-    @apply border-border;
+    @apply border-neutral-border;
   }
   
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply bg-default-background text-default-font font-sans;
   }
   
   html {
@@ -74,23 +31,23 @@
 @layer components {
   /* Notion-like prose styles */
   .prose-notion {
-    @apply text-notion-gray-900;
+    @apply text-default-font;
   }
   
   .prose-notion h1 {
-    @apply text-3xl font-bold text-notion-gray-900 mb-4 mt-8 leading-tight;
+    @apply text-3xl font-bold text-default-font mb-4 mt-8 leading-tight;
   }
   
   .prose-notion h2 {
-    @apply text-2xl font-semibold text-notion-gray-900 mb-3 mt-6 leading-tight;
+    @apply text-2xl font-semibold text-default-font mb-3 mt-6 leading-tight;
   }
   
   .prose-notion h3 {
-    @apply text-xl font-medium text-notion-gray-900 mb-2 mt-4 leading-tight;
+    @apply text-xl font-medium text-default-font mb-2 mt-4 leading-tight;
   }
   
   .prose-notion p {
-    @apply text-notion-base text-notion-gray-900 leading-relaxed mb-3;
+    @apply text-base text-default-font leading-relaxed mb-3;
   }
   
   .prose-notion ul, .prose-notion ol {
@@ -98,15 +55,15 @@
   }
   
   .prose-notion li {
-    @apply text-notion-base text-notion-gray-900 leading-relaxed mb-1;
+    @apply text-base text-default-font leading-relaxed mb-1;
   }
   
   .prose-notion blockquote {
-    @apply border-l-4 border-notion-gray-300 pl-4 italic text-notion-gray-600 my-4;
+    @apply border-l-4 border-neutral-border pl-4 italic text-subtext-color my-4;
   }
   
   .prose-notion strong {
-    @apply font-semibold text-notion-gray-900;
+    @apply font-semibold text-default-font;
   }
   
   .prose-notion em {
@@ -114,15 +71,144 @@
   }
   
   .prose-notion code {
-    @apply bg-notion-gray-100 text-notion-gray-800 px-1.5 py-0.5 rounded text-sm font-mono;
+    @apply bg-neutral-50 text-default-font px-1.5 py-0.5 rounded text-sm font-mono;
   }
   
   .prose-notion pre {
-    @apply bg-notion-gray-100 text-notion-gray-800 p-4 rounded-lg overflow-x-auto my-4;
+    @apply bg-neutral-50 text-default-font p-4 rounded-lg overflow-x-auto my-4;
   }
   
   .prose-notion pre code {
     @apply bg-transparent p-0;
+  }
+
+  /* Enhanced Notion-like styling for ReactMarkdown */
+  .prose {
+    @apply text-default-font;
+  }
+
+  .prose h1 {
+    @apply text-3xl font-bold text-default-font mb-6 mt-8 leading-tight;
+  }
+
+  .prose h2 {
+    @apply text-2xl font-semibold text-default-font mb-4 mt-6 leading-tight;
+  }
+
+  .prose h3 {
+    @apply text-xl font-medium text-default-font mb-3 mt-4 leading-tight;
+  }
+
+  .prose h4 {
+    @apply text-lg font-medium text-default-font mb-2 mt-3 leading-tight;
+  }
+
+  .prose h5 {
+    @apply text-base font-medium text-default-font mb-2 mt-3 leading-tight;
+  }
+
+  .prose h6 {
+    @apply text-sm font-medium text-default-font mb-2 mt-3 leading-tight;
+  }
+
+  .prose p {
+    @apply text-base text-default-font leading-relaxed mb-4;
+  }
+
+  .prose ul, .prose ol {
+    @apply mb-4 pl-6 space-y-1;
+  }
+
+  .prose li {
+    @apply text-base text-default-font leading-relaxed;
+  }
+
+  .prose li > ul, .prose li > ol {
+    @apply mt-2 mb-0;
+  }
+
+  .prose blockquote {
+    @apply border-l-4 border-neutral-border pl-4 italic text-subtext-color my-6 py-2;
+  }
+
+  .prose strong {
+    @apply font-semibold text-default-font;
+  }
+
+  .prose em {
+    @apply italic text-default-font;
+  }
+
+  .prose code {
+    @apply bg-neutral-50 text-default-font px-1.5 py-0.5 rounded text-sm font-mono;
+  }
+
+  .prose pre {
+    @apply bg-neutral-50 text-default-font p-4 rounded-lg overflow-x-auto my-6 border border-neutral-border;
+  }
+
+  .prose pre code {
+    @apply bg-transparent p-0 text-sm;
+  }
+
+  .prose a {
+    @apply text-blue-600 no-underline hover:underline;
+  }
+
+  .prose hr {
+    @apply border-neutral-border my-8;
+  }
+
+  .prose table {
+    @apply w-full border-collapse border border-neutral-border my-6;
+  }
+
+  .prose th {
+    @apply border border-neutral-border px-3 py-2 text-left font-semibold text-default-font bg-neutral-50;
+  }
+
+  .prose td {
+    @apply border border-neutral-border px-3 py-2 text-default-font;
+  }
+
+  .prose img {
+    @apply rounded-lg my-6 max-w-full h-auto;
+  }
+
+  /* Code block styling */
+  .prose pre {
+    @apply bg-neutral-50 border border-neutral-border;
+  }
+
+  .prose pre code {
+    @apply text-sm leading-relaxed;
+  }
+
+  /* List styling */
+  .prose ul {
+    @apply list-disc;
+  }
+
+  .prose ol {
+    @apply list-decimal;
+  }
+
+  .prose ul ul {
+    list-style-type: circle;
+  }
+
+  .prose ol ol {
+    @apply list-decimal;
+  }
+
+  /* Task list styling */
+  .prose input[type="checkbox"] {
+    @apply mr-2;
+  }
+
+  /* Inline code styling */
+  .prose :not(pre) > code {
+    @apply bg-neutral-50 text-default-font px-1.5 py-0.5 rounded text-sm font-mono;
   }
 }
 
@@ -130,7 +216,7 @@
   /* Custom scrollbar */
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: hsl(var(--muted-foreground)) transparent;
+    scrollbar-color: rgb(163, 163, 163) transparent;
   }
   
   .scrollbar-thin::-webkit-scrollbar {
@@ -142,12 +228,12 @@
   }
   
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--muted-foreground));
+    @apply bg-neutral-400;
     border-radius: 3px;
   }
   
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background-color: hsl(var(--foreground));
+    @apply bg-neutral-500;
   }
   
   /* Animation utilities */
@@ -162,11 +248,11 @@
 
 /* Custom selection styles */
 ::selection {
-  @apply bg-blue-200/50 text-gray-900;
+  @apply bg-blue-200/50 text-default-font;
 }
 
 ::-moz-selection {
-  @apply bg-blue-200/50 text-gray-900;
+  @apply bg-blue-200/50 text-default-font;
 }
 
 /* Ensure proper text selection behavior */
@@ -229,7 +315,7 @@
 }
 
 .slate-editor [data-slate-placeholder] {
-  @apply text-notion-gray-400 pointer-events-none select-none;
+  @apply text-subtext-color pointer-events-none select-none;
 }
 
 /* Diff viewer inline styles */

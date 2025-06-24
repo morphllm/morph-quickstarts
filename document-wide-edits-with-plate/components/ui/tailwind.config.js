@@ -70,7 +70,6 @@ module.exports = {
         "default-font": "rgb(23, 23, 23)",
         "subtext-color": "rgb(115, 115, 115)",
         "neutral-border": "rgb(229, 229, 229)",
-        white: "rgb(255, 255, 255)",
         "default-background": "rgb(255, 255, 255)",
       },
       fontSize: {
@@ -191,11 +190,4 @@ module.exports = {
       },
     },
   },
-  content: [
-    "./app/**/*.{js,ts,jsx,tsx}",
-    "./components/**/*.{js,ts,jsx,tsx}",
-    "./components/ui/**/*.{js,ts,jsx,tsx}"
-  ],
-  plugins: [require('@tailwindcss/typography')],
-  presets: [require("./components/ui/tailwind.config.js")]
 };

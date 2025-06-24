@@ -1,5 +1,20 @@
 import type { Metadata } from 'next';
+import { Inter, Figtree } from 'next/font/google';
 import './globals.css';
+
+const inter = Inter({
+  subsets: ['latin'],
+  weight: ['100', '200', '300', '400', '500', '600', '700', '800', '900'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+
+const figtree = Figtree({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700', '800', '900'],
+  variable: '--font-figtree',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Morph Demo - Document Editor',
@@ -12,8 +27,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="antialiased bg-white">
+    <html lang="en" className={`${inter.variable} ${figtree.variable}`}>
+      <body 
+        className="antialiased bg-default-background font-inter"
+        suppressHydrationWarning={true}
+      >
         {children}
       </body>
     </html>

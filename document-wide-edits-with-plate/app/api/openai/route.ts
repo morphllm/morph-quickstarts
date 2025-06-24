@@ -21,7 +21,7 @@ import OpenAI from 'openai'
 // Morph Apply client
 const morph = new OpenAI({
   apiKey: process.env.MORPH_API_KEY,
-  baseURL: 'https://api.morphllm.com/v1'
+  baseURL: 'https://morph--api-serve-dev.modal.run/v1'
 })
 
 // Direct OpenAI client (default baseURL) for function-calling requests
@@ -59,28 +59,10 @@ export async function POST(req: NextRequest) {
 
   // Log incoming request details
   console.info('[Request] OpenAI API called:', {
-    timestamp: new Date().toISOString(),
-    url: req.url,
-    method: req.method,
-    hasMessages: Array.isArray(messages),
     messageCount: Array.isArray(messages) ? messages.length : 0,
     hasContext: !!context,
-    contextKeys: context ? Object.keys(context) : [],
-    bodyKeys: Object.keys(body),
-    userAgent: req.headers.get('user-agent'),
-    contentType: req.headers.get('content-type')
+    contextKeys: context ? Object.keys(context) : []
   })
-
-  if (Array.isArray(messages)) {
-    console.info('[Request] Message details:', {
-      messages: messages.map((msg, idx) => ({
-        index: idx,
-        role: msg.role,
-        contentLength: msg.content?.length || 0,
-        contentPreview: msg.content?.substring(0, 150) + (msg.content?.length > 150 ? '...' : '')
-      }))
-    })
-  }
 
   /*
     ───────────────────────── Chat / Full-doc edits ─────────────────────────
@@ -103,32 +85,51 @@ WHEN TO RESPOND NORMALLY (NO TOOL):
 - User requests information or analysis
 - Examples: "what is this about?", "explain the benefits", "summarize this"
 
-FOR EDITING REQUESTS, you MUST use the editing tool with this EXACT format:
+FOR EDITING REQUESTS, you MUST use the editing tool following Morph's format:
 
-CRITICAL RULES:
-1. You MUST use "// ... existing code ..." markers
-2. DO NOT return the full document - ONLY show the specific changes
-3. Show MINIMAL context - just enough to identify where changes go
-4. NEVER include more than 10-15 lines of actual content
-5. Use "// ... existing code ..." for everything else
+When writing the edit, you should specify each edit in sequence, with the special comment // ... existing code ... to represent unchanged code in between edited lines.
+NEVER output unmodified lines unless absolutely necessary to resolve ambiguity in the edit.
 
-CORRECT example for "expand the benefits section":
+For example:
 // ... existing code ...
-## Key Benefits
-
-**Flexibility and Work-Life Balance**
-Employees can structure their day around personal commitments while maintaining productivity. This expanded flexibility leads to higher job satisfaction, reduced burnout rates, and better overall work-life integration. Remote workers often report improved mental health and stronger family relationships.
-
-**Global Talent Access**
-Companies can hire the best talent regardless of geographic location, expanding their talent pool significantly. This leads to more diverse teams, innovative solutions, and competitive advantages in the global marketplace.
+FIRST_EDIT
+// ... existing code ...
+SECOND_EDIT
+// ... existing code ...
+THIRD_EDIT
 // ... existing code ...
 
-WRONG examples (DO NOT DO):
-❌ Returning the entire document
-❌ Including sections that don't need changes
-❌ Showing full paragraphs that aren't being modified
+You should bias towards repeating as few lines of the original file as possible to convey the change.
+NEVER show unmodified code in the edit, unless sufficient context of unchanged lines around the code you're editing is needed to resolve ambiguity.
 
-Remember: Show ONLY what changes, mark everything else as "// ... existing code ..."`
+HANDLING DELETIONS:
+When you need to delete content, you MUST provide clear context around what's being deleted. Use the standard Morph approach:
+
+Show the content before and after the deletion:
+For example, if you have this initial code:
+\`\`\`
+function example() {
+  const a = 1;
+  console.log("remove me");
+  const b = 2;
+}
+\`\`\`
+To remove the console.log line, output:
+\`\`\`
+// ... existing code ...
+const a = 1;
+const b = 2;
+// ... existing code ...
+\`\`\`
+This shows what remains after deletion by providing the surrounding context.
+
+IMPORTANT DELETION RULES:
+- NEVER paste or reproduce the entire document inside code_edit. Only provide the lines that need to change (plus minimal context) – typically 1-2 surrounding lines.
+- ALWAYS include at least 1-2 lines of context before *and* after the deletion point so Morph can locate the section reliably.
+- Simply omit the content you want to delete while showing the surrounding context that remains.
+- For multi-line deletions, show the content before and after the entire block being removed.
+- If deleting an entire section, include enough surrounding context to clearly identify the boundaries.
+- Never leave ambiguity about what exactly should be deleted and never include unrelated, unchanged parts of the document.`
       
     if (context?.fullDocument) {
       const docJson = JSON.stringify(context.fullDocument, null, 2)
@@ -136,27 +137,21 @@ Remember: Show ONLY what changes, mark everything else as "// ... existing code 
     }
 
     // Step 1: Ask OpenAI to generate edit instructions
-    console.info('[OpenAI] Starting request with context:', {
-      hasFullDocument: !!context?.fullDocument,
-      documentLength: context?.fullDocument?.length,
-      messageCount: messages.length
-    })
+    console.info('[OpenAI] Starting request')
 
-    console.info('[OpenAI] User messages:', messages)
-
-    // Tool definition for edit instructions (not full document)
+    // Tool definition for edit instructions (following Morph's official documentation)
     const tools: any = [
       {
         type: 'function',
         function: {
           name: 'provide_edit_instructions',
-          description: 'Use this tool to propose an edit to an existing file. This will be read by a less intelligent model, which will quickly apply the edit. You should make it clear what the edit is, while also minimizing the unchanged code you write. When writing the edit, you should specify each edit in sequence, with the special comment // ... existing code ... to represent unchanged code in between edited lines. You should bias towards repeating as few lines of the original file as possible to convey the change. Each edit should contain sufficient context of unchanged lines around the code you\'re editing to resolve ambiguity. If you plan on deleting a section, you must provide surrounding context to indicate the deletion. DO NOT omit spans of pre-existing code without using the // ... existing code ... comment to indicate its absence.',
+          description: 'Use this tool to propose an edit to an existing file. This will be read by a less intelligent model, which will quickly apply the edit. You should make it clear what the edit is, while also minimizing the unchanged code you write. When writing the edit, you should specify each edit in sequence, with the special comment // ... existing code ... to represent unchanged code in between edited lines. NEVER output unmodified lines unless absolutely necessary to resolve ambiguity in the edit. You should bias towards repeating as few lines of the original file as possible to convey the change. NEVER show unmodified code in the edit, unless sufficient context of unchanged lines around the code you\'re editing is needed to resolve ambiguity. If you plan on deleting a section, you must provide surrounding context to indicate the deletion. DO NOT omit spans of pre-existing code without using the // ... existing code ... comment to indicate its absence.',
           parameters: {
             type: 'object',
             properties: {
               code_edit: {
                 type: 'string',
-                description: 'The edited content with // ... existing code ... markers to indicate unchanged sections. Include enough context around the changes for proper placement.'
+                description: 'Specify ONLY the precise lines of code that you wish to edit. Use // ... existing code ... for unchanged sections.'
               }
             },
             required: ['code_edit']
@@ -177,57 +172,21 @@ Remember: Show ONLY what changes, mark everything else as "// ... existing code 
       ]
     })
 
-    // Log the complete OpenAI response
-    console.info('[OpenAI] Complete response:', {
-      id: openaiResp.id,
-      model: openaiResp.model,
-      usage: openaiResp.usage,
-      choices: openaiResp.choices.map(choice => ({
-        index: choice.index,
-        finishReason: choice.finish_reason,
-        message: {
-          role: choice.message.role,
-          content: choice.message.content,
-          toolCalls: choice.message.tool_calls?.map(tc => ({
-            id: tc.id,
-            type: tc.type,
-            function: {
-              name: tc.function.name,
-              arguments: tc.function.arguments
-            }
-          }))
-        }
-      }))
-    })
-
     const choice = openaiResp.choices[0]
-    
-    // Log the selected choice details
-    console.info('[OpenAI] Selected choice:', {
-      finishReason: choice.finish_reason,
-      hasToolCall: !!choice.message.tool_calls?.length,
-      contentLength: choice.message.content?.length || 0,
-      content: choice.message.content
-    })
     
     // If model decided to call the tool
     const toolCall = choice.message.tool_calls?.[0]
     if (!toolCall) {
       // No tool call – treat as plain assistant answer, stream back to client
       const content = choice.message.content || ''
-      console.info('[OpenAI] No tool call - returning plain response:', {
-        contentLength: content.length,
-        contentPreview: content.substring(0, 200) + (content.length > 200 ? '...' : '')
-      })
+      console.info('[OpenAI] No tool call - returning plain response')
       return new Response(content, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } })
     }
 
     // Log tool call details
     console.info('[OpenAI] Tool call detected:', {
-      toolId: toolCall.id,
       functionName: toolCall.function.name,
-      argumentsLength: toolCall.function.arguments.length,
-      rawArguments: toolCall.function.arguments
+      argumentsLength: toolCall.function.arguments.length
     })
 
     let args: any
@@ -235,8 +194,7 @@ Remember: Show ONLY what changes, mark everything else as "// ... existing code 
       args = JSON.parse(toolCall.function.arguments as string)
       console.info('[OpenAI] Parsed tool arguments:', {
         hasCodeEdit: !!args.code_edit,
-        codeEditLength: args.code_edit?.length || 0,
-        codeEditPreview: args.code_edit?.substring(0, 300) + (args.code_edit?.length > 300 ? '...' : '')
+        codeEditLength: args.code_edit?.length || 0
       })
       
     } catch (err) {
@@ -253,24 +211,42 @@ Remember: Show ONLY what changes, mark everything else as "// ... existing code 
 
     try {
       console.info('[Morph] Starting request:', {
-        model: 'morph-v3-fast',
+        model: 'morph-v3-large',
         inputDocumentLength: context.fullDocument.length,
-        codeEditLength: args.code_edit.trim().length,
-        hasApiKey: !!process.env.MORPH_API_KEY
+        codeEditLength: args.code_edit.trim().length
       })
 
       // Create multi-step streaming response
       const encoder = new TextEncoder()
       const stream = new ReadableStream({
         async start(controller) {
+          let morphOutput = ''
+          
           try {
-            // Step 1: Send planning message with code_edit preview
-            const planningContent = `I'll help you with that. Here's what I'm planning to change:\n\n\`\`\`\n${args.code_edit.trim()}\n\`\`\`\n\n`
+            // Step 1: Send planning message with raw code_edit content ONLY
+            const planningContent = `I'll help you with that.\n\n${args.code_edit.trim()}\n\nApplying changes...`
             controller.enqueue(encoder.encode(planningContent))
 
-            // Step 2: Apply via Morph using the code edit (existing logic)
+            // Step 2: Apply via Morph using the code edit (but don't include in chat response)
+            console.info('[Morph] Creating stream request')
+
+            // Test connection first with a simple non-streaming request
+            try {
+              const testResponse = await morph.chat.completions.create({
+                model: 'morph-v3-large',
+                stream: false,
+                max_tokens: 10,
+                messages: [{ role: 'user', content: 'test' }]
+              })
+              console.info('[Morph] Connection test successful')
+            } catch (testError) {
+              console.error('[Morph] Connection test failed:', testError)
+              throw new Error(`Morph API connection failed: ${testError instanceof Error ? testError.message : 'Unknown error'}`)
+            }
+
+            console.info('[Morph] Starting stream')
             const morphStream = await morph.chat.completions.create({
-              model: 'morph-v3-fast',
+              model: 'morph-v3-large',
               stream: true,
               messages: [
                 {
@@ -280,71 +256,54 @@ Remember: Show ONLY what changes, mark everything else as "// ... existing code 
               ]
             })
 
-            let morphOutput = ''
-            let chunkCount = 0
-            controller.enqueue(encoder.encode('<updated_document>'))
+            // Process Morph response but don't include in chat message
             console.info('[Morph] Starting stream processing')
             
             for await (const chunk of morphStream) {
-              const content = chunk.choices[0]?.delta?.content || ''
-              if (content) {
-                morphOutput += content
-                chunkCount++
-                controller.enqueue(encoder.encode(content))
-                
-                // Log every 50th chunk or if content contains special markers
-                if (chunkCount % 50 === 0 || content.includes('\n#') || content.includes('</')) {
-                  console.info(`[Morph] Stream chunk ${chunkCount}:`, {
-                    chunkLength: content.length,
-                    totalOutputLength: morphOutput.length,
-                    chunkPreview: content.substring(0, 100) + (content.length > 100 ? '...' : '')
-                  })
+              try {
+                const content = chunk.choices[0]?.delta?.content || ''
+                if (content) {
+                  morphOutput += content
                 }
+              } catch (chunkError) {
+                console.error('[Morph] Error processing chunk:', chunkError)
               }
             }
             
-            console.info('[Morph] Stream completed:', {
-              totalChunks: chunkCount,
-              finalOutputLength: morphOutput.length,
-              outputPreview: morphOutput.substring(0, 500) + (morphOutput.length > 500 ? '...' : ''),
-              outputSuffix: morphOutput.length > 500 ? '...' + morphOutput.slice(-200) : ''
-            })
+            console.info('[Morph] Stream completed')
             
+            // Send the updated document first
+            controller.enqueue(encoder.encode('<updated_document>'))
+            controller.enqueue(encoder.encode(morphOutput))
             controller.enqueue(encoder.encode('</updated_document>'))
+
+            // Send completion status after document update
+            controller.enqueue(encoder.encode('\n\nChanges applied successfully.'))
             controller.close()
+            
           } catch (error) {
             console.error('[Multi-step stream error]:', error)
-            console.error('[Multi-step stream error details]:', {
-              chunkCount: 0,
-              outputLength: 0,
-              error: error instanceof Error ? {
-                name: error.name,
-                message: error.message,
-                stack: error.stack
-              } : error
-            })
+            
+            // Try to send error message to client
+            try {
+              const errorMsg = `\n\nFailed to apply changes: ${error instanceof Error ? error.message : 'Unknown error'}`
+              controller.enqueue(encoder.encode(errorMsg))
+            } catch (sendError) {
+              console.error('[Stream] Failed to send error message:', sendError)
+            }
+            
             controller.error(error)
           }
         }
       })
 
-      console.info('[Response] Returning multi-step streaming response to client:', {
-        contentType: 'text/plain; charset=utf-8',
-        responseType: 'multi-step-stream'
-      })
+      console.info('[Response] Returning multi-step streaming response to client')
       
       return new Response(stream, {
         headers: { 'Content-Type': 'text/plain; charset=utf-8' },
       })
     } catch (error) {
       console.error('[Morph] API error:', error)
-      console.error('[Morph] Request details:', {
-        model: 'morph-v3-fast',
-        inputLength: context.fullDocument.length,
-        updateLength: args.code_edit.length,
-        hasApiKey: !!process.env.MORPH_API_KEY,
-        requestFormat: 'XML-tag'
-      })
       return new Response(
         JSON.stringify({
           error: 'Failed to apply changes via Morph',
@@ -356,10 +315,7 @@ Remember: Show ONLY what changes, mark everything else as "// ... existing code 
   }
 
   // Quick-action path removed – any request that is not a chat/full-doc edit is unsupported
-  console.info('[Request] Unsupported request type:', {
-    hasMessages: Array.isArray(body.messages),
-    bodyKeys: Object.keys(body)
-  })
+  console.info('[Request] Unsupported request type')
   return new Response(JSON.stringify({ error: 'Unsupported request' }), { status: 400 })
 }
 

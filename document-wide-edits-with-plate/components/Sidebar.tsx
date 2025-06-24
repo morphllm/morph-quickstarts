@@ -2,7 +2,8 @@
 
 import React, { useState, useRef, useEffect } from 'react'
 import { useChat } from 'ai/react'
-import { Badge } from "@/components/ui/badge"
+import { Badge, Button, Avatar, IconWithBackground, IconButton, Tooltip } from "@/components/ui"
+import * as SubframeCore from "@subframe/core"
 import { 
   MessageSquare,
   Clock,
@@ -11,9 +12,15 @@ import {
   Bot,
   Loader2,
   Edit,
-  History
+  History,
+  Sparkle,
+  ThumbsUp,
+  ThumbsDown,
+  RefreshCw,
+  Copy,
+  MoreHorizontal,
+  Share
 } from 'lucide-react'
-import { Button } from "@/components/ui/button"
 
 interface EditHistory {
   id: string
@@ -35,8 +42,36 @@ interface NotionSidebarProps {
 
 // Helper function to extract planned changes from backticks
 const extractPlannedChanges = (content: string): string | null => {
-  const backtickMatch = content.match(/```\n([\s\S]*?)\n```/)
-  return backtickMatch ? backtickMatch[1].trim() : null
+  const planningMatch = content.match(/Here's what I'm planning to change:\n\n```\n([\s\S]*?)\n```/)
+  return planningMatch ? planningMatch[1] : null
+}
+
+const formatMessageContent = (content: string) => {
+  // Check if this is a planning message
+  if (content.startsWith("I'll help you with that.")) {
+    // Extract content up to the <updated_document> tag
+    const beforeUpdatedDoc = content.split('<updated_document>')[0]
+    
+    // Extract the content between the initial message and "Applying changes..."
+    const parts = beforeUpdatedDoc.split("\n\n")
+    const planningContent = parts.slice(1, -1).join("\n\n").trim()
+    
+    // Get the status messages
+    const statusMessages = [
+      'Applying changes...',
+      'Changes applied successfully.'
+    ]
+    
+    return {
+      type: 'planning' as const,
+      planningContent,
+      statusUpdates: statusMessages.join('\n')
+    }
+  }
+  return {
+    type: 'regular' as const,
+    content: content.split('<updated_document>')[0].trim()
+  }
 }
 
 export default function NotionSidebar({ selectedText, editHistory, document, chatDraftText = '', selectionRange, onStreamUpdate }: NotionSidebarProps) {
@@ -131,231 +166,135 @@ export default function NotionSidebar({ selectedText, editHistory, document, cha
   }, [messages, onStreamUpdate])
 
   return (
-    <div className="w-80 bg-gray-50 border-l border-gray-200 flex flex-col h-screen fixed right-0 top-0">
-      {/* Header placeholder to match Document header height */}
-      <div className="px-6 py-3 border-b border-gray-200 bg-white" />
-
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200 bg-white">
-        <button
-          onClick={() => setActiveTab('chat')}
-          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === 'chat' 
-              ? 'text-blue-600 border-b-2 border-blue-600' 
-              : 'text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          Chat
-        </button>
-        <button
-          onClick={() => setActiveTab('history')}
-          className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === 'history' 
-              ? 'text-blue-600 border-b-2 border-blue-600' 
-              : 'text-gray-600 hover:text-gray-900'
-          }`}
-        >
-          History
-        </button>
+    <div className="w-[480px] bg-white flex flex-col h-screen fixed right-0 top-0 border-l border-neutral-border">
+      {/* Header */}
+      <div className="px-6 py-3 flex items-center justify-between border-b border-neutral-border bg-default-background">
+        {/* First Row - Title and Actions */}
+        <div className="flex items-center gap-">
+          <span className="text-sm font-medium text-default-font">AI Assistant</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <IconButton
+            size="small"
+            variant="neutral-tertiary"
+            icon={<Share className="w-4 h-4" />}
+          />
+          <IconButton
+            size="small"
+            variant="neutral-tertiary"
+            icon={<MoreHorizontal className="w-4 h-4" />}
+          />
+        </div>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        {activeTab === 'chat' && (
-          <div className="flex flex-col h-full">
-            <div className="flex-1 p-4 overflow-y-auto">
-              {messages.length === 0 && !selectedText ? (
-                <div className="text-center py-8">
-                  <Bot className="w-8 h-8 mx-auto mb-3 text-gray-400" />
-                  <p className="text-sm text-gray-500">
-                    Ask anything about your document or select text to edit
-                  </p>
+      <div className="flex-1 overflow-y-auto bg-white">
+        <div className="flex flex-col h-full">
+          <div className="flex-1 p-4 overflow-y-auto">
+            {messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-center gap-2">
+                <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
+                  <Bot className="w-6 h-6 text-gray-600" />
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className="flex gap-3"
-                    >
-                      <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center ${
-                        message.role === 'assistant' 
-                          ? 'bg-gray-100' 
-                          : 'bg-blue-100'
-                      }`}>
-                        {message.role === 'assistant' ? (
-                          <Bot className="w-4 h-4 text-gray-600" />
-                        ) : (
-                          <User className="w-4 h-4 text-blue-600" />
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <div className={`inline-block px-3 py-2 rounded-lg text-sm max-w-[80%] ${
-                          message.role === 'assistant'
-                            ? 'bg-gray-50 text-gray-900'
-                            : 'bg-blue-500 text-white'
-                        }`}>
-                          {(() => {
-                            if (message.role === 'assistant') {
-                              // Check for planned changes with code_edit preview
-                              const plannedChanges = extractPlannedChanges(message.content)
-                              const hasDocumentStream = message.content.includes('<updated_document>')
-                              
-                              if (plannedChanges) {
-                                const planningContent = (
-                                  <div>
-                                    <div className="mb-3">{message.content.split('```')[0].trim()}</div>
-                                    <div className="bg-gray-800 text-gray-100 p-3 rounded text-xs font-mono overflow-x-auto">
-                                      <div className="text-gray-400 mb-2 flex items-center gap-1">
-                                        <Edit className="w-3 h-3" />
-                                        Planned changes:
-                                      </div>
-                                      <pre className="whitespace-pre-wrap text-green-300">{plannedChanges}</pre>
-                                    </div>
-                                  </div>
-                                )
-                                
-                                // If this message also has document streaming, show both
-                                if (hasDocumentStream) {
-                                  const done = message.content.includes('</updated_document>')
-                                  return (
-                                    <div>
-                                      {planningContent}
-                                      <div className="mt-3 pt-3 border-t border-gray-200">
-                                        <div className="text-sm text-gray-600">
-                                          {done ? '✅ Changes applied successfully' : '⏳ Applying changes...'}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  )
-                                }
-                                
-                                return planningContent
-                              }
-
-                              // Handle document streaming only (no planning content)
-                              if (hasDocumentStream) {
-                                const done = message.content.includes('</updated_document>')
-                                return done ? '✅ Draft ready. Review in document pane.' : '⏳ Updating document…'
-                              }
-                            }
-                            return message.content
-                          })()}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {isLoading && (
-                    <div className="flex gap-3">
-                      <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center">
-                        <Bot className="w-4 h-4 text-gray-600" />
-                      </div>
-                      <div className="bg-gray-50 px-3 py-2 rounded-lg">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      </div>
-                    </div>
-                  )}
-                  <div ref={messagesEndRef} />
-                </div>
-              )}
-            </div>
-            
-            <form onSubmit={handleSubmit} className="p-4 border-t border-gray-200 bg-white">
-              {chatDraftText && (
-                <div className="mb-2 text-xs text-gray-500 truncate">
-                  Inserted: &quot;{chatDraftText.length > 120 ? chatDraftText.substring(0, 120) + '...' : chatDraftText}&quot;
-                </div>
-              )}
-              <div className="flex gap-2">
-                <textarea
-                  value={input}
-                  onChange={handleInputChange}
-                  placeholder={selectedText ? "Ask something or give an edit instruction" : "Enter to send, Shift+Enter for new line"}
-                  disabled={isLoading}
-                  rows={2}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      // trigger form submit
-                      (e.currentTarget.form as HTMLFormElement)?.requestSubmit();
-                    }
-                  }}
-                  className="flex-1 resize-none px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50"
-                  ref={inputRef}
-                />
-                <Button 
-                  type="submit" 
-                  size="sm" 
-                  disabled={isLoading || !input.trim()}
-                  className="px-3"
-                >
-                  <Send className="w-4 h-4" />
-                </Button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {activeTab === 'history' && (
-          <div className="p-4">
-            {editHistory.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <Clock className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                <p className="text-sm">No edits yet</p>
-                <p className="text-xs text-gray-400 mt-1">Changes will appear here as you edit</p>
+                <p className="text-sm text-gray-600 max-w-[200px]">
+                  Let me know how I can assist with your docs.
+                </p>
               </div>
             ) : (
-              <div className="relative">
-                {/* Timeline Line */}
-                <div className="absolute left-4 top-0 bottom-0 w-px bg-gray-200"></div>
-                
-                <div className="space-y-4">
-                  {editHistory.map((edit, index) => (
-                    <div key={edit.id} className="relative flex items-start">
-                      {/* Timeline Dot */}
-                      <div className="absolute left-2.5 w-3 h-3 bg-blue-500 rounded-full border-2 border-white shadow-sm z-10"></div>
-                      
-                      {/* Content */}
-                      <div className="ml-8 flex-1">
-                        <div className="bg-white rounded-lg border border-gray-200 p-3 shadow-sm">
-                          {/* Header */}
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 border-blue-200">
-                                {edit.transformation}
-                              </Badge>
-                              <span className="text-xs text-gray-500">
-                                #{editHistory.length - index}
-                              </span>
-                            </div>
-                            <span className="text-xs text-gray-400">
-                              {edit.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
+              <div className="space-y-6">
+                {messages.map((message) => {
+                  const formattedMessage = formatMessageContent(message.content)
+                  
+                  return (
+                    <div key={message.id} className={`flex ${message.role === 'assistant' ? 'justify-start' : 'justify-end'}`}>
+                      <div className={`flex items-start gap-3 max-w-[85%] ${message.role === 'assistant' ? 'flex-row' : 'flex-row-reverse'}`}>
+                        {message.role === 'assistant' ? (
+                          <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                            <Bot className="w-4 h-4 text-gray-600" />
                           </div>
-                          
-                          {/* Brief preview snippet */}
-                          <p className="text-sm text-gray-700 leading-relaxed line-clamp-3">
-                            {edit.newText.slice(0,120)}{edit.newText.length>120?'…':''}
-                          </p>
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                            <User className="w-4 h-4 text-blue-600" />
+                          </div>
+                        )}
+                        <div className={`rounded-2xl px-4 py-2 ${
+                          message.role === 'assistant' 
+                            ? 'bg-gray-100 text-gray-900' 
+                            : 'bg-blue-600 text-white'
+                        }`}>
+                          {formattedMessage.type === 'planning' ? (
+                            <div className="space-y-3">
+                              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <Sparkle className="w-4 h-4 text-blue-600" />
+                                  <span className="text-sm font-medium text-blue-800">Planning Step</span>
+                                </div>
+                                <pre className="text-xs text-blue-900 whitespace-pre-wrap font-mono bg-blue-100 p-2 rounded border">
+                                  {formattedMessage.planningContent}
+                                </pre>
+                              </div>
+                              {formattedMessage.statusUpdates && (
+                                <p className="text-sm whitespace-pre-wrap text-gray-600">{formattedMessage.statusUpdates}</p>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-sm whitespace-pre-wrap">{formattedMessage.content}</p>
+                          )}
                         </div>
                       </div>
                     </div>
-                  ))}
-                  
-                  {/* Initial state marker */}
-                  <div className="relative flex items-start">
-                    <div className="absolute left-2.5 w-3 h-3 bg-gray-300 rounded-full border-2 border-white shadow-sm z-10"></div>
-                    <div className="ml-8 flex-1">
-                      <div className="text-xs text-gray-500 py-2">
-                        <span className="font-medium">Initial document</span>
+                  )
+                })}
+                {isLoading && (
+                  <div className="flex justify-start">
+                    <div className="flex items-start gap-3 max-w-[85%]">
+                      <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                        <Bot className="w-4 h-4 text-gray-600" />
+                      </div>
+                      <div className="rounded-2xl px-4 py-2 bg-gray-100">
+                        <Loader2 className="w-4 h-4 animate-spin text-gray-600" />
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
+                <div ref={messagesEndRef} />
               </div>
             )}
           </div>
-        )}
+          
+          {/* Input Area */}
+          <div className="p-4 border-t border-gray-100">
+            <form onSubmit={handleSubmit} className="relative">
+              <textarea
+                value={input}
+                onChange={handleInputChange}
+                placeholder="Chat with me..."
+                disabled={isLoading}
+                rows={1}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    (e.currentTarget.form as HTMLFormElement)?.requestSubmit();
+                  }
+                }}
+                className="w-full rounded-xl border border-gray-200 pl-4 pr-12 py-2 text-sm focus:outline-none focus:border-blue-500 resize-none"
+                ref={inputRef}
+              />
+              <button
+                type="submit"
+                disabled={isLoading || !input.trim()}
+                className="absolute right-2 bottom-2 p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50"
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            </form>
+            <div className="mt-2 text-center">
+              <span className="text-xs text-gray-500">
+                AI can make mistakes. Always double check the source.
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   )
