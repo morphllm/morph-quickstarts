@@ -121,15 +121,23 @@ const a = 1;
 const b = 2;
 // ... existing code ...
 \`\`\`
-This shows what remains after deletion by providing the surrounding context.
+This shows what remains after deletion by providing the surrounding context. Always include both the opening and closing // ... existing code ... comments to show context before and after the changes.
 
 IMPORTANT DELETION RULES:
 - NEVER paste or reproduce the entire document inside code_edit. Only provide the lines that need to change (plus minimal context) – typically 1-2 surrounding lines.
 - ALWAYS include at least 1-2 lines of context before *and* after the deletion point so Morph can locate the section reliably.
 - Simply omit the content you want to delete while showing the surrounding context that remains.
-- For multi-line deletions, show the content before and after the entire block being removed.
-- If deleting an entire section, include enough surrounding context to clearly identify the boundaries.
-- Never leave ambiguity about what exactly should be deleted and never include unrelated, unchanged parts of the document.`
+
+- For section deletions, show ONLY the content immediately before and after the deleted section, not everything that follows.
+- Example: To delete "## Key Benefits" section, show the heading before it and the heading after it:
+  \`\`\`
+  // ... existing code ...
+  ## Challenges to Address
+  // ... existing code ...
+  ## Best Practices for Success
+  // ... existing code ...
+  \`\`\`
+- Never include large blocks of unrelated content that comes after the deletion point.`
       
     if (context?.fullDocument) {
       const docJson = JSON.stringify(context.fullDocument, null, 2)

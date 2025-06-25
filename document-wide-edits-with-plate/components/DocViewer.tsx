@@ -1,15 +1,10 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import { cn } from '../lib/utils';
 import { Badge } from '@/components/ui';
 import { Loader2 } from 'lucide-react';
-// @ts-ignore – Plate v42+ exposes the React bindings under this path
-import { Plate, PlateContent, usePlateEditor } from 'platejs/react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
-
+import { Plate, PlateContent, usePlateEditor, createPlateEditor } from 'platejs/react';
 import {
   HeadingPlugin,
   BlockquotePlugin,
@@ -18,24 +13,47 @@ import {
   UnderlinePlugin,
   StrikethroughPlugin,
   CodePlugin,
-} from '@platejs/basic-nodes/react';
+  ParagraphPlugin,
+} from '@platejs/basic-nodes';
+import {
+  ListPlugin,
+  BulletedListPlugin,
+  NumberedListPlugin,
+  ListItemPlugin,
+} from '@platejs/list';
+import { LinkPlugin } from '@platejs/link';
+import { AutoformatPlugin } from '@platejs/autoformat';
+import { IndentPlugin } from '@platejs/indent';
 
 // Utility functions for document stats
-const getWordCount = (text: string): number => {
+const getWordCount = (nodes: any[]): number => {
+  const getText = (node: any): string => {
+    if (typeof node === 'string') return node;
+    if (node.text) return node.text;
+    if (node.children) return node.children.map(getText).join('');
+    return '';
+  };
+  const text = nodes.map(getText).join(' ');
   return text.trim().split(/\s+/).filter(word => word.length > 0).length;
 };
 
-const getCharacterCount = (text: string): number => {
-  return text.length;
+const getCharacterCount = (nodes: any[]): number => {
+  const getText = (node: any): string => {
+    if (typeof node === 'string') return node;
+    if (node.text) return node.text;
+    if (node.children) return node.children.map(getText).join('');
+    return '';
+  };
+  return nodes.map(getText).join('').length;
 };
 
-const getReadingTime = (text: string): number => {
+const getReadingTime = (nodes: any[]): number => {
   const wordsPerMinute = 200;
-  const wordCount = getWordCount(text);
+  const wordCount = getWordCount(nodes);
   return Math.ceil(wordCount / wordsPerMinute);
 };
 
-// Enhanced markdown to Plate value converter
+// Convert markdown to Plate value
 const parseMarkdownToPlate = (markdown: string) => {
   if (!markdown || markdown.trim() === '') {
     return [{ type: 'p', children: [{ text: '' }] }];
@@ -94,15 +112,7 @@ const parseMarkdownToPlate = (markdown: string) => {
       flushList();
       nodes.push({
         type: 'blockquote',
-        children: parseInlineText(trimmedLine.slice(2))
-      });
-    }
-    // Handle horizontal rules
-    else if (trimmedLine.match(/^[-*_]{3,}$/)) {
-      flushList();
-      nodes.push({
-        type: 'hr',
-        children: [{ text: '' }]
+        children: [{ type: 'p', children: parseInlineText(trimmedLine.slice(2)) }]
       });
     }
     // Handle unordered lists
@@ -115,7 +125,7 @@ const parseMarkdownToPlate = (markdown: string) => {
       }
       listItems.push({
         type: 'li',
-        children: parseInlineText(trimmedLine.slice(2))
+        children: [{ type: 'lic', children: parseInlineText(trimmedLine.slice(2)) }]
       });
     }
     // Handle ordered lists
@@ -128,7 +138,7 @@ const parseMarkdownToPlate = (markdown: string) => {
       }
       listItems.push({
         type: 'li',
-        children: parseInlineText(trimmedLine.replace(/^\d+\.\s/, ''))
+        children: [{ type: 'lic', children: parseInlineText(trimmedLine.replace(/^\d+\.\s/, '')) }]
       });
     }
     // Handle code blocks
@@ -146,8 +156,10 @@ const parseMarkdownToPlate = (markdown: string) => {
     // Handle empty lines
     else if (trimmedLine === '') {
       flushList();
-      // Don't add empty paragraphs, just continue
-      continue;
+      // Add empty paragraph for spacing
+      if (nodes.length > 0 && nodes[nodes.length - 1].type !== 'p') {
+        nodes.push({ type: 'p', children: [{ text: '' }] });
+      }
     }
     // Handle regular paragraphs
     else {
@@ -167,7 +179,7 @@ const parseMarkdownToPlate = (markdown: string) => {
   function flushList() {
     if (inList && listItems.length > 0) {
       nodes.push({
-        type: listType,
+        type: listType === 'ul' ? 'ul' : 'ol',
         children: listItems
       });
       inList = false;
@@ -200,7 +212,7 @@ const extractCodeBlock = (lines: string[], startIndex: number) => {
   };
 };
 
-// Enhanced inline text parsing
+// Parse inline text with formatting
 const parseInlineText = (text: string) => {
   if (!text) return [{ text: '' }];
   
@@ -209,56 +221,31 @@ const parseInlineText = (text: string) => {
   let i = 0;
   
   while (i < text.length) {
-    // Handle bold text (**text** or __text__)
-    if ((text.slice(i, i + 2) === '**' || text.slice(i, i + 2) === '__') && 
-        text.indexOf(text.slice(i, i + 2), i + 2) !== -1) {
+    // Handle bold text (**text**)
+    if (text.slice(i, i + 2) === '**' && text.indexOf('**', i + 2) !== -1) {
       if (currentText) {
         children.push({ text: currentText });
         currentText = '';
       }
       
-      const endIndex = text.indexOf(text.slice(i, i + 2), i + 2);
+      const endIndex = text.indexOf('**', i + 2);
       const boldText = text.slice(i + 2, endIndex);
-      children.push({
-        type: 'bold',
-        children: [{ text: boldText }]
-      });
+      children.push({ text: boldText, bold: true });
       i = endIndex + 2;
       continue;
     }
     
-    // Handle italic text (*text* or _text_)
-    if ((text[i] === '*' || text[i] === '_') && 
-        text.indexOf(text[i], i + 1) !== -1) {
+    // Handle italic text (*text*)
+    if (text[i] === '*' && text.indexOf('*', i + 1) !== -1) {
       if (currentText) {
         children.push({ text: currentText });
         currentText = '';
       }
       
-      const endIndex = text.indexOf(text[i], i + 1);
+      const endIndex = text.indexOf('*', i + 1);
       const italicText = text.slice(i + 1, endIndex);
-      children.push({
-        type: 'italic',
-        children: [{ text: italicText }]
-      });
+      children.push({ text: italicText, italic: true });
       i = endIndex + 1;
-      continue;
-    }
-    
-    // Handle strikethrough text (~~text~~)
-    if (text.slice(i, i + 2) === '~~' && text.indexOf('~~', i + 2) !== -1) {
-      if (currentText) {
-        children.push({ text: currentText });
-        currentText = '';
-      }
-      
-      const endIndex = text.indexOf('~~', i + 2);
-      const strikeText = text.slice(i + 2, endIndex);
-      children.push({
-        type: 'strikethrough',
-        children: [{ text: strikeText }]
-      });
-      i = endIndex + 2;
       continue;
     }
     
@@ -272,36 +259,8 @@ const parseInlineText = (text: string) => {
       const endIndex = text.indexOf('`', i + 1);
       if (endIndex !== -1) {
         const codeText = text.slice(i + 1, endIndex);
-        children.push({
-          type: 'code',
-          children: [{ text: codeText }]
-        });
+        children.push({ text: codeText, code: true });
         i = endIndex + 1;
-        continue;
-      }
-    }
-    
-    // Handle links [text](url)
-    if (text[i] === '[') {
-      const endBracket = text.indexOf(']', i);
-      const startParen = text.indexOf('(', endBracket);
-      const endParen = text.indexOf(')', startParen);
-      
-      if (endBracket !== -1 && startParen !== -1 && endParen !== -1) {
-        if (currentText) {
-          children.push({ text: currentText });
-          currentText = '';
-        }
-        
-        const linkText = text.slice(i + 1, endBracket);
-        const linkUrl = text.slice(startParen + 1, endParen);
-        
-        children.push({
-          type: 'a',
-          url: linkUrl,
-          children: [{ text: linkText }]
-        });
-        i = endParen + 1;
         continue;
       }
     }
@@ -315,6 +274,46 @@ const parseInlineText = (text: string) => {
   }
   
   return children.length > 0 ? children : [{ text: '' }];
+};
+
+// Convert Plate value to markdown for API
+const plateToMarkdown = (value: any[]): string => {
+  const nodeToMarkdown = (node: any): string => {
+    if (node.text !== undefined) {
+      let text = node.text;
+      if (node.bold) text = `**${text}**`;
+      if (node.italic) text = `*${text}*`;
+      if (node.code) text = `\`${text}\``;
+      return text;
+    }
+    
+    const children = node.children?.map(nodeToMarkdown).join('') || '';
+    
+    switch (node.type) {
+      case 'h1': return `# ${children}\n\n`;
+      case 'h2': return `## ${children}\n\n`;
+      case 'h3': return `### ${children}\n\n`;
+      case 'h4': return `#### ${children}\n\n`;
+      case 'h5': return `##### ${children}\n\n`;
+      case 'h6': return `###### ${children}\n\n`;
+      case 'p': return `${children}\n\n`;
+      case 'blockquote': return `> ${children}\n\n`;
+      case 'ul':
+        return node.children?.map((li: any) => {
+          const content = li.children?.[0]?.children?.map(nodeToMarkdown).join('') || '';
+          return `- ${content}`;
+        }).join('\n') + '\n\n';
+      case 'ol':
+        return node.children?.map((li: any, index: number) => {
+          const content = li.children?.[0]?.children?.map(nodeToMarkdown).join('') || '';
+          return `${index + 1}. ${content}`;
+        }).join('\n') + '\n\n';
+      case 'code_block': return `\`\`\`\n${children}\n\`\`\`\n\n`;
+      default: return children;
+    }
+  };
+  
+  return value.map(nodeToMarkdown).join('').trim();
 };
 
 export interface TimingInfo {
@@ -331,6 +330,7 @@ interface DocumentViewerProps {
   isTransforming: boolean;
   className?: string;
   editable?: boolean;
+  onContentChange?: (content: string) => void;
 }
 
 export function DocumentViewer({ 
@@ -340,18 +340,25 @@ export function DocumentViewer({
   timing,
   isTransforming, 
   className,
-  editable = false
+  editable = true,
+  onContentChange
 }: DocumentViewerProps) {
-  const [hydrated, setHydrated] = React.useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [plateValue, setPlateValue] = useState(() => parseMarkdownToPlate(content));
   
-  React.useEffect(() => {
+  useEffect(() => {
     setHydrated(true);
   }, []);
 
-  const initialValue = useMemo(() => parseMarkdownToPlate(content), [content]);
+  // Update plate value when content changes (for streaming updates)
+  useEffect(() => {
+    const newValue = parseMarkdownToPlate(content);
+    setPlateValue(newValue);
+  }, [content]);
 
   const editor = usePlateEditor({
     plugins: [
+      ParagraphPlugin,
       HeadingPlugin,
       BlockquotePlugin,
       BoldPlugin,
@@ -359,14 +366,93 @@ export function DocumentViewer({
       UnderlinePlugin,
       StrikethroughPlugin,
       CodePlugin,
+      LinkPlugin,
+      ListPlugin,
+      BulletedListPlugin,
+      NumberedListPlugin,
+      ListItemPlugin,
+      IndentPlugin.configure({
+        inject: {
+          targetPlugins: [
+            ParagraphPlugin.key,
+            BlockquotePlugin.key,
+            CodePlugin.key,
+          ],
+        },
+      }),
+      AutoformatPlugin.configure({
+        options: {
+          rules: [
+            // Headings
+            {
+              mode: 'block',
+              type: 'h1',
+              match: '# ',
+              format: (editor) => {
+                editor.setBlocks({ type: 'h1' });
+              },
+            },
+            {
+              mode: 'block',
+              type: 'h2',
+              match: '## ',
+              format: (editor) => {
+                editor.setBlocks({ type: 'h2' });
+              },
+            },
+            {
+              mode: 'block',
+              type: 'h3',
+              match: '### ',
+              format: (editor) => {
+                editor.setBlocks({ type: 'h3' });
+              },
+            },
+            // Lists
+            {
+              mode: 'block',
+              type: 'ul',
+              match: ['* ', '- ', '+ '],
+              format: (editor) => {
+                editor.setBlocks({ type: 'ul' });
+              },
+            },
+            {
+              mode: 'block',
+              type: 'ol',
+              match: /^(\d+)\. $/,
+              format: (editor) => {
+                editor.setBlocks({ type: 'ol' });
+              },
+            },
+            // Blockquote
+            {
+              mode: 'block',
+              type: 'blockquote',
+              match: '> ',
+              format: (editor) => {
+                editor.setBlocks({ type: 'blockquote' });
+              },
+            },
+          ],
+        },
+      }),
     ],
-    value: initialValue,
+    value: plateValue,
   });
 
+  const handleChange = useCallback((newValue: any[]) => {
+    setPlateValue(newValue);
+    if (onContentChange && editable) {
+      const markdown = plateToMarkdown(newValue);
+      onContentChange(markdown);
+    }
+  }, [onContentChange, editable]);
+
   const stats = {
-    words: content ? getWordCount(content) : 0,
-    characters: content ? getCharacterCount(content) : 0,
-    readingTime: content ? getReadingTime(content) : 0,
+    words: plateValue ? getWordCount(plateValue) : 0,
+    characters: plateValue ? getCharacterCount(plateValue) : 0,
+    readingTime: plateValue ? getReadingTime(plateValue) : 0,
   };
 
   const renderTimingInfo = () => {
@@ -403,48 +489,80 @@ export function DocumentViewer({
 
   const renderContent = () => {
     // Show placeholder for empty content
-    if (!content || content.trim() === '') {
+    if (!plateValue || plateValue.length === 0 || (plateValue.length === 1 && plateValue[0].children?.[0]?.text === '')) {
       return (
         <div className="flex items-center justify-center h-full min-h-[600px]">
-          <div className="text-center text-subtext-color">
+          <div className="text-center text-gray-500">
             <div className="text-4xl mb-4">⚡</div>
             <h3 className="text-lg font-medium mb-2">Ready for Transformation</h3>
-            <p className="text-sm">Select a transformation from the options below to see the results</p>
+            <p className="text-sm">Start typing or use the AI assistant to create content</p>
           </div>
         </div>
       );
     }
 
-    // Use ReactMarkdown for comprehensive markdown support with Notion-like styling
     return (
-      <div className={cn(
-        'prose prose-lg max-w-none text-default-font',
-        'prose-headings:text-default-font prose-p:text-default-font prose-li:text-default-font prose-blockquote:text-subtext-color prose-code:text-default-font prose-pre:bg-neutral-50 prose-pre:text-default-font prose-strong:text-default-font prose-em:text-default-font prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline'
-      )}>
-        <ReactMarkdown 
-          remarkPlugins={[remarkGfm]} 
-          rehypePlugins={[rehypeRaw]}
-        >
-          {content}
-        </ReactMarkdown>
-      </div>
+      <Plate 
+        editor={editor} 
+        value={plateValue} 
+        onChange={handleChange}
+        readOnly={!editable}
+      >
+        <PlateContent 
+          className={cn(
+            'min-h-[600px] w-full p-0 focus:outline-none',
+            // Notion-like styling
+            '[&_.slate-editor]:min-h-[600px]',
+            '[&_.slate-editor]:p-0',
+            '[&_.slate-editor]:text-base',
+            '[&_.slate-editor]:leading-7',
+            '[&_.slate-editor]:text-gray-900',
+            // Headings
+            '[&_h1]:text-3xl [&_h1]:font-bold [&_h1]:mt-6 [&_h1]:mb-3 [&_h1]:text-gray-900',
+            '[&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-5 [&_h2]:mb-3 [&_h2]:text-gray-900',
+            '[&_h3]:text-xl [&_h3]:font-bold [&_h3]:mt-4 [&_h3]:mb-2 [&_h3]:text-gray-900',
+            '[&_h4]:text-lg [&_h4]:font-bold [&_h4]:mt-4 [&_h4]:mb-2 [&_h4]:text-gray-900',
+            '[&_h5]:text-base [&_h5]:font-bold [&_h5]:mt-3 [&_h5]:mb-2 [&_h5]:text-gray-900',
+            '[&_h6]:text-sm [&_h6]:font-bold [&_h6]:mt-3 [&_h6]:mb-2 [&_h6]:text-gray-900',
+            // Paragraphs
+            '[&_p]:mb-3 [&_p]:leading-7',
+            // Lists
+            '[&_ul]:mb-3 [&_ul]:pl-6',
+            '[&_ol]:mb-3 [&_ol]:pl-6',
+            '[&_li]:mb-1 [&_li]:leading-7',
+            // Blockquotes
+            '[&_blockquote]:border-l-4 [&_blockquote]:border-gray-300 [&_blockquote]:pl-4 [&_blockquote]:py-2 [&_blockquote]:mb-3 [&_blockquote]:text-gray-700 [&_blockquote]:italic',
+            // Code
+            '[&_code]:bg-gray-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-sm [&_code]:font-mono',
+            '[&_pre]:bg-gray-100 [&_pre]:p-4 [&_pre]:rounded [&_pre]:mb-3 [&_pre]:overflow-x-auto',
+            // Links
+            '[&_a]:text-blue-600 [&_a]:underline hover:[&_a]:text-blue-800',
+            // Formatting
+            '[&_strong]:font-bold',
+            '[&_em]:italic',
+            '[&_u]:underline',
+            '[&_s]:line-through'
+          )}
+          placeholder="Start writing..."
+        />
+      </Plate>
     );
   };
 
   return (
-    <div className={cn('flex flex-col h-full bg-neutral-50', className)}>
+    <div className={cn('flex flex-col h-full bg-gray-50', className)}>
       {/* Header */}
-      <div className="px-6 py-3 border-b border-neutral-border bg-default-background">
+      <div className="px-6 py-3 border-b border-gray-200 bg-white">
         {/* Title and Actions Row */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <h1 className="text-sm font-medium text-default-font">
+            <h1 className="text-sm font-medium text-gray-900">
               {title}
             </h1>
           </div>
           <div className="flex items-center space-x-2">
             {hydrated && (
-              <div className="text-xs text-subtext-color flex items-center space-x-2" suppressHydrationWarning>
+              <div className="text-xs text-gray-500 flex items-center space-x-2" suppressHydrationWarning>
                 <span>{stats.words} words</span>
                 <span>•</span>
                 <span>{stats.readingTime} min read</span>
@@ -455,16 +573,16 @@ export function DocumentViewer({
 
         {/* Performance Metrics - Only visible when transforming or has timing info */}
         {(isTransforming || timing || time !== null) && (
-          <div className="flex items-center justify-between bg-neutral-100 -mx-6 px-6 py-2 border-t border-neutral-border mt-2">
+          <div className="flex items-center justify-between bg-gray-100 -mx-6 px-6 py-2 border-t border-gray-200 mt-2">
             <div className="flex items-center space-x-2">
               {isTransforming && (
-                <div className="flex items-center space-x-2 text-sm text-primary">
+                <div className="flex items-center space-x-2 text-sm text-blue-600">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   <span className="text-xs">Transforming...</span>
                 </div>
               )}
               {!isTransforming && (
-                <div className="text-xs font-medium text-subtext-color">
+                <div className="text-xs font-medium text-gray-600">
                   ⚡ Performance Metrics:
                 </div>
               )}
@@ -477,9 +595,9 @@ export function DocumentViewer({
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto bg-neutral-50">
+      <div className="flex-1 overflow-auto bg-gray-50">
         <div className="max-w-[840px] w-full mx-auto px-6 py-6 h-full">
-          <div className="bg-default-background rounded-lg p-6 shadow-sm border border-neutral-border h-full">
+          <div className="bg-white rounded-lg p-8 shadow-sm border border-gray-200 h-full">
             {renderContent()}
           </div>
         </div>

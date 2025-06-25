@@ -248,6 +248,8 @@ export default function Home() {
           time={null}
           isTransforming={!!streamingContent}
           className=""
+          editable={true}
+          onContentChange={setDocContent}
         />
         {/* Quick actions UI removed */}
       </div>
